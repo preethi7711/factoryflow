@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.health import router as health_router
+from app.core.spa import SPAStaticFiles
 
 API_PREFIX = "/api/v1"
 
@@ -20,6 +21,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(health_router, prefix=API_PREFIX)
+    # Mounted last, so every /api route above wins over the static files.
+    if settings.static_dir:
+        app.mount("/", SPAStaticFiles(directory=settings.static_dir, html=True), name="web")
     return app
 
 

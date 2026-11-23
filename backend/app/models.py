@@ -2,6 +2,15 @@
 
 from app.audit.models import AuditLog
 from app.auth.models import AppUser
+from app.billing.models import (
+    CreditNote,
+    CreditNoteLine,
+    Dispatch,
+    DispatchLine,
+    Invoice,
+    InvoiceLine,
+    InvoiceSequence,
+)
 from app.inventory.models import StockAdjustment, StockAdjustmentLine, StockLot, StockMovement
 from app.masters.models import Bom, BomLine, CompanySettings, Customer, Item, ItemUnit, Supplier
 from app.production.models import ProductionRun, RunConsumption, RunOverhead
@@ -19,8 +28,15 @@ __all__ = [
     "Bom",
     "BomLine",
     "CompanySettings",
+    "CreditNote",
+    "CreditNoteLine",
     "Customer",
+    "Dispatch",
+    "DispatchLine",
     "IdempotencyKey",
+    "Invoice",
+    "InvoiceLine",
+    "InvoiceSequence",
     "Item",
     "ItemUnit",
     "OrderLine",

@@ -18,6 +18,10 @@ ORPHANS = text(
     "                    WHERE m.source_type = 'production_run' AND r.id = m.source_id)"
     "   AND NOT EXISTS (SELECT 1 FROM stock_adjustment a"
     "                    WHERE m.source_type = 'stock_adjustment' AND a.id = m.source_id)"
+    "   AND NOT EXISTS (SELECT 1 FROM dispatch d"
+    "                    WHERE m.source_type = 'dispatch' AND d.id = m.source_id)"
+    "   AND NOT EXISTS (SELECT 1 FROM credit_note c"
+    "                    WHERE m.source_type = 'credit_note' AND c.id = m.source_id)"
 )
 LEDGER_SUM = text("SELECT COALESCE(SUM(qty), 0) FROM stock_movement WHERE item_id = :item_id")
 

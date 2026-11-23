@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import app.models  # noqa: F401  (registers every table before the first request)
 from app.auth.router import router as auth_router
+from app.billing.router import router as billing_router
 from app.core.config import get_settings
 from app.core.errors import install_error_handlers
 from app.core.health import router as health_router
@@ -37,6 +38,7 @@ def create_app() -> FastAPI:
         purchasing_router,
         production_router,
         sales_router,
+        billing_router,
     )
     for router in routers:
         app.include_router(router, prefix=API_PREFIX)

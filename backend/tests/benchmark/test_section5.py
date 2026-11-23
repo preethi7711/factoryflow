@@ -363,7 +363,6 @@ def test_b6_fg_after_run_238(sc):
     assert sc.snap["after_run"][MURUKKU] == (Decimal("238"), "pkt")
 
 
-@NOT_BUILT
 def test_b7_fg_after_retailer_a_dispatch_88(sc):
     sc.require(5)
     assert sc.snap["fg_after_dispatch"] == (Decimal("88"), "pkt")
@@ -393,7 +392,6 @@ def test_b9b_pouch_variance_minus_3_pct_not_flagged(sc):
     assert pouch["flagged"] is False
 
 
-@NOT_BUILT
 def test_b10_retailer_a_invoice_cgst_sgst(sc):
     sc.require(5)
     inv = sc.snap["invoice_a"]
@@ -405,7 +403,6 @@ def test_b10_retailer_a_invoice_cgst_sgst(sc):
     assert inv["total_paise"] == 787500
 
 
-@NOT_BUILT
 def test_b10b_invoice_number_ff_2026_27_0001(sc):
     sc.require(5)
     assert sc.snap["invoice_a"]["invoice_no"] == "FF/2026-27/0001"
@@ -417,7 +414,6 @@ def test_b11_retailer_a_outstanding_3875(sc):
     assert sc.snap["outstanding_a"]["outstanding_paise"] == 387500
 
 
-@NOT_BUILT
 def test_b12_distributor_b_shortage_32_flagged(sc):
     sc.require(6)
     err = sc.snap["approve_b"]["error"]
@@ -427,7 +423,6 @@ def test_b12_distributor_b_shortage_32_flagged(sc):
     assert Decimal(err["details"]["shortage"]) == 32
 
 
-@NOT_BUILT
 def test_b12b_distributor_b_tax_preview_igst(sc):
     sc.require(6)
     p = sc.snap["preview_b"]

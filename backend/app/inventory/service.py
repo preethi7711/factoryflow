@@ -28,9 +28,15 @@ from app.masters import service as masters
 
 INFLOWS = frozenset({MovementType.OPENING, MovementType.PURCHASE, MovementType.OUTPUT})
 OUTFLOWS = frozenset({MovementType.ISSUE, MovementType.SCRAP, MovementType.DISPATCH})
-# Source documents whose table we can check for existence today (others arrive in P5).
+# Source documents whose table we can check for existence (invariant 6, every table added as built).
 KNOWN_SOURCE_TABLES = frozenset(
-    {SourceType.STOCK_ADJUSTMENT, SourceType.PURCHASE, SourceType.PRODUCTION_RUN}
+    {
+        SourceType.STOCK_ADJUSTMENT,
+        SourceType.PURCHASE,
+        SourceType.PRODUCTION_RUN,
+        SourceType.DISPATCH,
+        SourceType.CREDIT_NOTE,
+    }
 )
 
 
@@ -55,6 +61,14 @@ class OpeningLine:
     item_id: int
     qty: Decimal  # base unit, > 0
     value_paise: int
+
+
+@dataclass(frozen=True)
+class ReversalLine:
+    """One movement to undo. The reversal mirrors it exactly (same lot, opposite qty and value)."""
+
+    original_id: int  # the stock_movement being reversed
+    source_line_id: int  # a line of the reversing document (e.g. credit_note_line.id)
 
 
 # ---- reading -------------------------------------------------------------------------
@@ -330,6 +344,58 @@ def post_movements(
             if is_cost_adjust and balance(db, line.item_id)[0] == 0:
                 raise ValueError("no stock left to carry this cost; it would sit on zero quantity")
             insert(line, line.lot_id, line.qty, line.value_paise)
+    return posted
+
+
+def post_reversals(
+    db: Session,
+    *,
+    source_type: SourceType,
+    source_id: int,
+    movement_date: date,
+    user_id: int,
+    lines: Sequence[ReversalLine],
+) -> list[StockMovement]:
+    """Undo named movements by mirroring each one: same lot, opposite qty and opposite value,
+    linked to the original by reverses_id. Used by credit notes to cancel a dispatch.
+
+    Mirroring (not recomputing) is what makes a cancellation exact: the stock and the value that
+    left on dispatch come back unchanged, so balances and the item's weighted-average cost return
+    to exactly where they were. reverses_id is UNIQUE, so a movement can be reversed at most once.
+    """
+    if not lines:
+        raise ValueError("nothing to reverse")
+    _require_source_exists(db, source_type, source_id)
+    originals: dict[int, StockMovement] = {}
+    for line in lines:
+        original = db.get(StockMovement, line.original_id)
+        if original is None:
+            raise ValueError(f"movement {line.original_id} does not exist")
+        if MovementType(original.movement_type) is MovementType.REVERSAL:
+            raise ValueError("a reversal cannot itself be reversed")
+        originals[line.original_id] = original
+    # Lock the items first (as everywhere that posts), so a concurrent dispatch of the same item
+    # can't interleave with this undo.
+    masters.lock_items(db, (m.item_id for m in originals.values()))
+    posted: list[StockMovement] = []
+    for line in lines:
+        original = originals[line.original_id]
+        reversal = StockMovement(
+            item_id=original.item_id,
+            lot_id=original.lot_id,
+            qty=-original.qty,
+            value_paise=-original.value_paise,
+            movement_type=MovementType.REVERSAL.value,
+            movement_date=movement_date,
+            source_type=SourceType(source_type).value,
+            source_id=source_id,
+            source_line_id=line.source_line_id,
+            reverses_id=original.id,
+            posted_by=user_id,
+        )
+        db.add(reversal)
+        db.flush()  # the reverses_id UNIQUE index rejects a second reversal of the same movement
+        posted.append(reversal)
     return posted
 
 

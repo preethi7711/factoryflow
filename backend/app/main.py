@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import app.models  # noqa: F401  (registers every table before the first request)
 from app.auth.router import router as auth_router
+from app.billing.router import router as billing_router
 from app.core.config import get_settings
 from app.core.errors import install_error_handlers
 from app.core.health import router as health_router
@@ -13,6 +14,7 @@ from app.inventory.router import router as stock_router
 from app.masters.router import router as masters_router
 from app.production.router import router as production_router
 from app.purchasing.router import router as purchasing_router
+from app.sales.router import router as sales_router
 
 API_PREFIX = "/api/v1"
 
@@ -35,6 +37,8 @@ def create_app() -> FastAPI:
         stock_router,
         purchasing_router,
         production_router,
+        sales_router,
+        billing_router,
     )
     for router in routers:
         app.include_router(router, prefix=API_PREFIX)

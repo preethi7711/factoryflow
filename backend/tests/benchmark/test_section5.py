@@ -26,12 +26,12 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.core.db import engine
 from app.main import app
 from tests.conftest import reset_database
+from tests.invariants import LEDGER_SUM, MOVEMENTS, ORPHANS
 
 pytestmark = pytest.mark.benchmark
 NOT_BUILT = pytest.mark.xfail(strict=True, reason="not built yet")
@@ -59,12 +59,24 @@ class StepFailed(Exception):
     """An API call in the scenario returned an unexpected status."""
 
 
+@dataclass(frozen=True)
+class InvariantCheck:
+    """Ledger health recorded right after one completed step."""
+
+    step: int
+    problems: list[str]  # from GET /stock/reconcile
+    mismatches: list[str]  # items whose API balance differs from SUM(ledger)
+    orphans: int
+    movements: int
+
+
 @dataclass
 class Scenario:
     client: TestClient
     tokens: dict[str, str] = field(default_factory=dict)
     ids: dict[str, int] = field(default_factory=dict)
     snap: dict[str, Any] = field(default_factory=dict)  # values captured at a point in time
+    invariants: list[InvariantCheck] = field(default_factory=list)  # one per completed step
     reached: int = -1  # last step that completed
     error: str | None = None
 
@@ -94,6 +106,27 @@ class Scenario:
     def stock(self, code: str) -> tuple[Decimal, str]:
         body = self.call("GET", f"/stock/balance/{self.ids[code]}", "admin")
         return Decimal(body["qty"]), body["uom"]
+
+    def check_invariants(self, step: int) -> None:
+        """Invariants 4 and 6 after every completed step, so a step that breaks the ledger is
+        caught even if a later step happens to hide the damage."""
+        reconcile = self.call("GET", "/stock/reconcile", "accountant")
+        with engine.connect() as conn:
+            mismatches = [
+                code
+                for code in ALL_ITEMS
+                if self.stock(code)[0]
+                != conn.execute(LEDGER_SUM, {"item_id": self.ids[code]}).scalar_one()
+            ]
+            self.invariants.append(
+                InvariantCheck(
+                    step=step,
+                    problems=reconcile["problems"],
+                    mismatches=mismatches,
+                    orphans=conn.execute(ORPHANS).scalar_one(),
+                    movements=conn.execute(MOVEMENTS).scalar_one(),
+                )
+            )
 
 
 # --- Scenario steps (PROBLEM.md section 5, "Steps to demonstrate") --------------------
@@ -287,6 +320,7 @@ def sc():
             for n, step in enumerate(STEPS):
                 step(scenario)
                 scenario.reached = n
+                scenario.check_invariants(n)
         except Exception as exc:  # record and stop; each check reports what it was missing
             scenario.error = f"step {scenario.reached + 1}: {type(exc).__name__}: {exc}"
         yield scenario
@@ -426,33 +460,20 @@ def test_b13_cost_per_packet_31_14(sc):
     assert c["cost_per_unit_paise"] == 3114
 
 
-def test_ledger_reconciles_with_reported_balances(sc):
-    # Invariant 4: the balance the API reports is exactly SUM(qty) of the ledger.
-    # Needs only step 0: it checks whatever has been posted so far (the seed's opening stock
-    # first), so it grows stronger as each phase lets the scenario run further.
+def test_ledger_reconciles_after_every_step(sc):
+    # Invariant 4: after every completed step, reconcile is clean and each balance the API
+    # reports is exactly SUM(qty) of the ledger. Needs only step 0 (the seed's opening stock)
+    # and gets stronger as each phase lets the scenario run further.
     sc.require(0)
-    with engine.connect() as conn:
-        for code in ALL_ITEMS:
-            ledger_sum = conn.execute(
-                text("SELECT COALESCE(SUM(qty), 0) FROM stock_movement WHERE item_id = :i"),
-                {"i": sc.ids[code]},
-            ).scalar_one()
-            assert sc.stock(code)[0] == ledger_sum, code
+    assert any(c.movements for c in sc.invariants), "no step posted any stock"
+    assert [c for c in sc.invariants if c.problems or c.mismatches] == []
 
 
-def test_no_orphan_movements(sc):
-    # Invariant 6: every movement links to a source document. Like reconcile, needs only step 0.
+def test_no_orphan_movements_after_any_step(sc):
+    # Invariant 6: every movement links to a source document, after every completed step.
     sc.require(0)
-    with engine.connect() as conn:
-        total = conn.execute(text("SELECT COUNT(*) FROM stock_movement")).scalar_one()
-        orphans = conn.execute(
-            text(
-                "SELECT COUNT(*) FROM stock_movement "
-                "WHERE source_type IS NULL OR source_id IS NULL OR source_line_id IS NULL"
-            )
-        ).scalar_one()
-    assert total > 0
-    assert orphans == 0
+    assert any(c.movements for c in sc.invariants), "no step posted any stock"
+    assert [c for c in sc.invariants if c.orphans] == []
 
 
 @NOT_BUILT

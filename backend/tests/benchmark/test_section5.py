@@ -426,10 +426,11 @@ def test_b13_cost_per_packet_31_14(sc):
     assert c["cost_per_unit_paise"] == 3114
 
 
-@NOT_BUILT
 def test_ledger_reconciles_with_reported_balances(sc):
     # Invariant 4: the balance the API reports is exactly SUM(qty) of the ledger.
-    sc.require(9)
+    # Needs only step 0: it checks whatever has been posted so far (the seed's opening stock
+    # first), so it grows stronger as each phase lets the scenario run further.
+    sc.require(0)
     with engine.connect() as conn:
         for code in ALL_ITEMS:
             ledger_sum = conn.execute(
@@ -439,10 +440,9 @@ def test_ledger_reconciles_with_reported_balances(sc):
             assert sc.stock(code)[0] == ledger_sum, code
 
 
-@NOT_BUILT
 def test_no_orphan_movements(sc):
-    # Invariant 6: every movement links to a source document.
-    sc.require(9)
+    # Invariant 6: every movement links to a source document. Like reconcile, needs only step 0.
+    sc.require(0)
     with engine.connect() as conn:
         total = conn.execute(text("SELECT COUNT(*) FROM stock_movement")).scalar_one()
         orphans = conn.execute(

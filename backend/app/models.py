@@ -1,0 +1,22 @@
+"""Imports every module's models, so SQLAlchemy and Alembic see all tables at once."""
+
+from app.audit.models import AuditLog
+from app.auth.models import AppUser
+from app.inventory.models import StockAdjustment, StockAdjustmentLine, StockLot, StockMovement
+from app.masters.models import Bom, BomLine, CompanySettings, Customer, Item, ItemUnit, Supplier
+
+__all__ = [
+    "AppUser",
+    "AuditLog",
+    "Bom",
+    "BomLine",
+    "CompanySettings",
+    "Customer",
+    "Item",
+    "ItemUnit",
+    "StockAdjustment",
+    "StockAdjustmentLine",
+    "StockLot",
+    "StockMovement",
+    "Supplier",
+]

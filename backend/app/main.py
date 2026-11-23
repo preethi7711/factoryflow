@@ -3,9 +3,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+import app.models  # noqa: F401  (registers every table before the first request)
+from app.auth.router import router as auth_router
 from app.core.config import get_settings
+from app.core.errors import install_error_handlers
 from app.core.health import router as health_router
 from app.core.spa import SPAStaticFiles
+from app.inventory.router import router as stock_router
+from app.masters.router import router as masters_router
 
 API_PREFIX = "/api/v1"
 
@@ -20,7 +25,9 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.include_router(health_router, prefix=API_PREFIX)
+    install_error_handlers(app)
+    for router in (health_router, auth_router, masters_router, stock_router):
+        app.include_router(router, prefix=API_PREFIX)
     # Mounted last, so every /api route above wins over the static files.
     if settings.static_dir:
         app.mount("/", SPAStaticFiles(directory=settings.static_dir, html=True), name="web")

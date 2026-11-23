@@ -7,6 +7,10 @@ line-length = 100
 # E/F: pycodestyle + pyflakes, I: import order, UP: modern syntax, B: likely bugs, SIM: simplifications
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
+[tool.ruff.lint.per-file-ignores]
+# Generated migrations carry long SQL strings (CHECK constraints); splitting them helps nobody.
+"alembic/versions/*" = ["E501"]
+
 [tool.ruff.lint.isort]
 # backend/alembic/ (our migrations folder) would otherwise make ruff treat the library as ours.
 known-third-party = ["alembic"]

@@ -2,7 +2,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.core.units import UnitError, from_base, parse_qty, to_base
+from app.core.units import UnitError, check_qty_scale, from_base, parse_qty, to_base
 
 MURUKKU_PACKS = {"carton": Decimal(20)}
 
@@ -53,3 +53,10 @@ def test_from_base_for_display() -> None:
     assert from_base(Decimal(120000), "kg", "g") == 120  # B1 flour closing
     assert from_base(Decimal(19500), "l", "ml") == Decimal("19.5")  # B2 oil closing
     assert from_base(Decimal(188), "carton", "pkt", MURUKKU_PACKS) == Decimal("9.4")
+
+
+def test_base_quantities_keep_at_most_three_decimals() -> None:
+    assert str(check_qty_scale(Decimal("1200.5"))) == "1200.500"  # same scale as the column
+    assert check_qty_scale(Decimal("0.001")) == Decimal("0.001")
+    with pytest.raises(ValueError):
+        check_qty_scale(Decimal("1.2345"))  # Postgres would silently round this to 1.235

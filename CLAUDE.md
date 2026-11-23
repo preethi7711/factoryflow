@@ -107,7 +107,7 @@ docs/                    # spec, architecture, status, changelog, PROBLEM
 | Setup (first time) | `cp .env.example .env` then `docker compose build` |
 | Run everything | `docker compose up` (API on :8000; `API_PORT=8001` if busy; web on :5173 *(planned, P8)*) |
 | DB migrate | `docker compose run --rm api alembic upgrade head` |
-| Seed benchmark data | `docker compose run --rm api python -m app.seed` *(planned, P3)* |
+| Seed benchmark data | `docker compose run --rm api python -m app.seed` (no-op if users exist) |
 | Test (all) | `docker compose run --rm api pytest` |
 | Benchmark only | `docker compose run --rm api pytest -m benchmark -v -rxX` |
 | Lint backend | `docker compose run --rm api sh -c "ruff check . && ruff format --check ."` |

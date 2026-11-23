@@ -36,6 +36,20 @@ def parse_qty(value: str | int | Decimal) -> Decimal:
     return qty
 
 
+QTY_PLACES = 3  # quantity columns are NUMERIC(18, 3)
+
+
+def check_qty_scale(qty: Decimal) -> Decimal:
+    """Refuse a base-unit quantity with more than 3 decimals (Postgres would silently round it,
+    and a silently rounded quantity is a stock error nobody can trace). Returns the value at
+    exactly 3 places, so what we hold in memory is what the database stores: 30000 -> 30000.000.
+    """
+    scaled = qty.quantize(Decimal(1).scaleb(-QTY_PLACES))
+    if scaled != qty:
+        raise ValueError(f"{qty} has more than {QTY_PLACES} decimal places in the base unit")
+    return scaled
+
+
 def _unit(code: str) -> tuple[str, Decimal]:
     try:
         return GLOBAL_UNITS[code.lower()]

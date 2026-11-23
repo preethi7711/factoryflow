@@ -5,10 +5,9 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+import app.models  # noqa: F401  (every table, so autogenerate sees the whole schema)
 from app.core.config import get_settings
 from app.core.db import Base
-
-# Import model modules here as they are added (P3+), so autogenerate sees their tables.
 
 config = context.config
 if config.config_file_name is not None:

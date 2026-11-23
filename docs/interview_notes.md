@@ -113,3 +113,51 @@ whole paisa. 60 kg × 4500 paise is exact.
 ### Practice change (do it alone)
 Add `credit_note_no(fy, seq)` to `core/gst.py` returning `FF/CN/2026-27/0001` (the format in the gst-rules
 skill), with a test for seq 1 and seq 0 (error). Run `docker compose run --rm api pytest tests/unit -q`.
+
+## P3: Auth, masters, ledger, audit, seed
+
+### What it is
+- Who can log in and what each role may call; the master data (items, BOMs, customers, suppliers, prices);
+  the stock ledger every later phase posts to; an audit trail; and a seed with the benchmark's data.
+- Stock is never stored as a number to overwrite. It is `SUM()` of an append-only list of movements.
+
+### The 3 files that matter
+1. `backend/app/inventory/service.py`: `post_movements()`, the only writer of stock. Lock the items, check,
+   pick lots FIFO, value outflows at WAC, insert. It never commits; the calling service does.
+2. `backend/alembic/versions/20261123_40b955c1df42_auth_masters_ledger_audit.py`: the tables plus the
+   append-only trigger on `stock_movement` and `audit_log`.
+3. `backend/app/auth/deps.py`: `get_current_user` and `require_roles()`, deny by default.
+
+### One trace: `GET /api/v1/stock/balance/1` as `production`
+Bearer token → `require_roles(admin, production, auditor, owner)` → `get_current_user` decodes the JWT (only
+the user id) and re-reads role and active flag from the DB → allowed → `masters.get_item` (404 if missing) →
+`inventory.balance()` = `SELECT SUM(qty), SUM(value_paise) FROM stock_movement WHERE item_id = 1` →
+`{"qty": "100000.000", "uom": "g", "value_paise": 420000}` (100 kg of flour at ₹42).
+
+### Five likely questions
+1. **What stops someone editing stock?** There is no balance column to edit: stock = `SUM(ledger)`. The ledger
+   is append-only (a DB trigger rejects UPDATE, DELETE and TRUNCATE), only `post_movements()` inserts, and the
+   DB also rejects bad rows: no source document, a lot of another item, or a sign that doesn't match the type.
+   Mistakes are corrected with new movements.
+2. **Two people issue the last 10 kg at the same moment. What happens?** `post_movements()` locks the item rows
+   (`SELECT … FOR UPDATE`, always in id order so two transactions can't deadlock) before reading the balance.
+   The second one waits, then sees the lower balance and gets `INSUFFICIENT_STOCK`.
+3. **How do you prove "deny by default"?** A test walks every route and fails if one lacks `require_roles()`,
+   except `/health` and `/auth/login`. A role matrix test checks real answers, e.g. production gets 403 on
+   customers (it never sees sales data) and the auditor gets 403 on any POST.
+4. **Why re-read the user on every request instead of trusting the role in the token?** Tokens live 10 hours.
+   Re-reading means a disabled account or a changed role takes effect at once; the token only proves identity.
+5. **Is even the opening stock traceable?** Yes. It is a real document (`stock_adjustment`, kind OPENING) with
+   lines, and each movement points at it. After every benchmark step and every integration test, an invariant
+   check runs reconcile, compares API balances with `SUM(ledger)` and counts orphans.
+
+Bonus: **Why doesn't the weak-JWT-key check use a pydantic validator?** A pydantic error prints the input
+values, which would put the database URL and keys into Render's logs. A plain `RuntimeError` prints only the
+message.
+
+### Practice change (do it alone)
+Add a stock-take endpoint: `POST /api/v1/stock/adjustments` (roles admin, production) taking lines
+`{item_id, qty (signed), uom}`. Create a `stock_adjustment` (kind ADJUST) with lines, post `ADJUST` movements
+through `post_movements()`, write an audit row, commit. Test: flour counted at 98 kg → post −2 kg → balance
+98 kg and `reconcile()` is clean. Hint: a negative adjustment is valued at WAC by `post_movements()`; a positive
+one needs a value (use the current average cost).

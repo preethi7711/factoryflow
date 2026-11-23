@@ -43,9 +43,13 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
   includes pytest/ruff, live reload).
 - Local `backend/.venv` exists only so the ruff hook works on the host (git-ignored).
 - Benchmark test vs roadmap P3 "done when": the reconcile and orphan checks call `sc.require(9)` and RBAC
-  `sc.require(4)`, so they can't pass in P3. P3 should lower reconcile/orphan to `sc.require(0)` (they then
-  check whatever has been posted so far, starting with the seed's OPENING movements). RBAC stays at step 4 (P5),
-  and P3 proves RBAC with its own integration test.
+  `sc.require(4)`, so they can't pass in P3. Decided fix (P3): treat them as **invariants, not scenario
+  checks**. (1) The scenario fixture runs reconcile + the orphan query after every completed step and records
+  the result; the test asserts all were clean and at least one step posted movements. The same check runs as a
+  teardown in `tests/integration/conftest.py` for any test that posts stock. (2) A route-policy test walks
+  `app.routes` and fails if any `/api/v1` route lacks `require_roles(...)`, except a public allowlist
+  (`/health`, `/auth/login`), plus a per-phase table of (role, method, path, status). The benchmark
+  "salesman 403 on approve" check stays as is and turns green in P5.
 
 ## Benchmark scoreboard
 
@@ -72,9 +76,11 @@ Start phase P3 on branch feat/p3-ledger, exactly as defined in docs/roadmap.md. 
   post_movements() as the only writer (uses core.units / core.wac), balance(), reconcile(),
   GET /stock/balance/{item_id} → {"qty": "<decimal string>", "uom": "<base>"}.
 - audit: audit_log + record(). Seed: `python -m app.seed` with `run()`, opening stock from PROBLEM §5.
-Follow the stock-ledger skill. Lower the reconcile and orphan benchmark checks to sc.require(0) (see Open
-issues) and remove their xfail markers in the same commit once they pass; RBAC benchmark check stays xfail
-(needs orders, P5); add P3's own RBAC and trigger tests. Run the ledger-auditor only after P4.
+Follow the stock-ledger skill. Rework reconcile/orphan/RBAC as invariants (see Open issues): check
+reconcile + orphans after every scenario step and in an integration-test teardown, remove those two xfail
+markers in the same commit once they pass; add the route-policy test (every /api/v1 route has
+require_roles unless allowlisted) and a role table for P3's endpoints; the benchmark salesman-403 check stays
+xfail (needs orders, P5). Add the append-only trigger test. Run the ledger-auditor only after P4.
 Finish with tests and lint green, /update-docs-and-commit, merge to main, the teaching protocol, and an
 updated next prompt for P4.
 ```

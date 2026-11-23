@@ -5,14 +5,14 @@ It does nothing if users already exist, so running it twice is safe.
 GSTINs here are dummy values in the right format, not real registrations.
 """
 
-from datetime import date, datetime, time
+from datetime import date
 from decimal import Decimal
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.models import AppUser, Role
+from app.core.clock import start_of_day
 from app.core.config import get_settings
 from app.core.db import SessionLocal
 from app.core.security import hash_password
@@ -21,7 +21,6 @@ from app.core.wac import cost_per_unit_paise, receipt_value
 from app.inventory.service import OpeningLine, post_opening_stock
 from app.masters.models import Bom, BomLine, CompanySettings, Customer, Item, ItemUnit, Supplier
 
-IST = ZoneInfo("Asia/Kolkata")
 OPENING_DATE = date(2026, 10, 31)  # A17: the day before the benchmark month
 
 USERS = [  # spec section 2
@@ -169,7 +168,7 @@ def _seed(db: Session) -> None:
     post_opening_stock(
         db,
         as_of=OPENING_DATE,
-        received_at=datetime.combine(OPENING_DATE, time(0, 0), tzinfo=IST),
+        received_at=start_of_day(OPENING_DATE),
         user_id=users["admin"].id,
         lines=lines,
     )

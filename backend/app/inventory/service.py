@@ -71,6 +71,48 @@ def balance(
     return Decimal(qty), int(value)
 
 
+def source_value(
+    db: Session,
+    source_type: SourceType,
+    source_id: int,
+    movement_type: MovementType | None = None,
+) -> int:
+    """SUM(value_paise) of one document's movements, e.g. a run's ISSUEs (a negative number)."""
+    q = select(func.coalesce(func.sum(StockMovement.value_paise), 0)).where(
+        StockMovement.source_type == SourceType(source_type).value,
+        StockMovement.source_id == source_id,
+    )
+    if movement_type is not None:
+        q = q.where(StockMovement.movement_type == MovementType(movement_type).value)
+    return int(db.scalar(q))
+
+
+def source_qty_by_line(
+    db: Session, source_type: SourceType, source_id: int, movement_type: MovementType
+) -> dict[int, Decimal]:
+    """SUM(qty) per source line of one document, e.g. how much each run line really issued.
+
+    Documents read their actual quantities from here instead of storing a second copy.
+    """
+    q = (
+        select(StockMovement.source_line_id, func.sum(StockMovement.qty))
+        .where(
+            StockMovement.source_type == SourceType(source_type).value,
+            StockMovement.source_id == source_id,
+            StockMovement.movement_type == MovementType(movement_type).value,
+        )
+        .group_by(StockMovement.source_line_id)
+    )
+    return {line_id: Decimal(qty) for line_id, qty in db.execute(q)}
+
+
+def get_lot(db: Session, lot_id: int) -> StockLot:
+    lot = db.get(StockLot, lot_id)
+    if lot is None:
+        raise ValueError(f"lot {lot_id} does not exist")
+    return lot
+
+
 def lot_balances(db: Session, item_id: int) -> list[tuple[int, Decimal]]:
     """Lots of an item that still hold stock, oldest received first."""
     held = func.sum(StockMovement.qty)
@@ -202,7 +244,7 @@ def post_movements(
         raise ValueError("nothing to post")
     for line in lines:
         _check(line)
-    masters.lock_items(db, (line.item_id for line in lines))
+    items = masters.lock_items(db, (line.item_id for line in lines))
 
     posted: list[StockMovement] = []
 
@@ -226,14 +268,21 @@ def post_movements(
     for line in lines:
         if line.qty < 0:
             wanted = -line.qty
-            parts = [(line.lot_id, wanted)] if line.lot_id else allocate(db, line.item_id, wanted)
-            for lot_id, part in parts:
-                _lot_of_item(db, lot_id, line.item_id)
-                in_lot, _ = balance(db, line.item_id, lot_id=lot_id)
-                if part > in_lot:
-                    raise InsufficientStockError(part, in_lot)
-                on_hand, on_hand_value = balance(db, line.item_id)
-                insert(line, lot_id, -part, -issue_value(part, on_hand, on_hand_value))
+            try:
+                if line.lot_id:
+                    parts = [(line.lot_id, wanted)]
+                else:
+                    parts = allocate(db, line.item_id, wanted)
+                for lot_id, part in parts:
+                    _lot_of_item(db, lot_id, line.item_id)
+                    in_lot, _ = balance(db, line.item_id, lot_id=lot_id)
+                    if part > in_lot:
+                        raise InsufficientStockError(part, in_lot)
+                    on_hand, on_hand_value = balance(db, line.item_id)
+                    insert(line, lot_id, -part, -issue_value(part, on_hand, on_hand_value))
+            except InsufficientStockError as exc:  # say which item is short
+                code = items[line.item_id].code
+                raise InsufficientStockError(exc.requested, exc.available, item=code) from None
         else:
             assert line.lot_id is not None and line.value_paise is not None  # checked in _check
             _lot_of_item(db, line.lot_id, line.item_id)

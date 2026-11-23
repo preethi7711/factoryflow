@@ -6,6 +6,18 @@ Each milestone adds a section. Commit hashes are in `git log`.
 ## [Unreleased]
 
 ### Added
+- P2 core maths in `backend/app/core/` (pure, no DB/HTTP): `money` (paise, half-up, Indian ₹ format),
+  `units` (Decimal `to_base`/`from_base`, item packs, cross-dimension errors, floats refused), `gst`
+  (INTRA/INTER, per-line tax, FY, invoice numbers, soft GSTIN checks), `wac` (receipt/issue value with
+  anti-drift, cost per unit), `variance` (bp + strict exact-value flag). 64 unit tests, incl. B8–B10, B12b,
+  B13 and A5 arithmetic.
+
+### Changed
+- Architecture: variance flag uses exact values; rounding points listed in one place.
+
+## P1b deploy
+
+### Added
 - P1b: root multi-stage `Dockerfile` (Node builds `frontend/`, slim Python serves API + built files as a
   non-root user, listens on `$PORT`, runs `alembic upgrade head` on start) and root `.dockerignore`.
 - Placeholder React + Vite frontend (`frontend/`) showing live API/DB health.

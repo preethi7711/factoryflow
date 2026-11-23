@@ -127,8 +127,12 @@ Other key fields:
 - **Overheads added later** post a `COST_ADJUST` movement (qty 0, value > 0) on the run's FG lot. Append-only, and FG value stays right.
 - **Cost per packet** = (materials + run overheads) / good output.
 - **Variance:**
-  - Planned = BOM qty × batches. `var_bp = (actual − planned) × 10000 / planned`.
-  - Flag when `|var_bp| > tol_bp`. Yield variance is computed the same way on output.
+  - Planned = BOM qty × batches. `var_bp = (actual − planned) × 10000 / planned`, half-up, for display.
+  - Flag when `|actual − planned| × 10000 > tol_bp × planned`: the exact value, not the rounded bp, so 3.004%
+    is still flagged. Yield variance is computed the same way on output.
+- **Rounding points (the only places we round, all half-up to the paisa):** receipt line value
+  (`wac.receipt_value`), issue value (`wac.issue_value`, except an emptying issue), each tax component per line
+  (`gst.line_tax`), cost per unit (`wac.cost_per_unit_paise`). Variance bp is rounded for display only.
 - **GST:**
   - Company state 33 (TN). Place of supply = customer state.
   - Intra-state: CGST = SGST = `half_up(taxable × bp/2 / 10000)` per line.

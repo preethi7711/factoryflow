@@ -2,7 +2,7 @@
 
 _Last updated: 2026-11-23_
 
-## Current phase: P1b done. Next: **P2 core maths**
+## Current phase: P2 done. Next: **P3 auth, masters, ledger, seed**
 
 **Live:** https://factoryflow-icdx.onrender.com (Render Free, Singapore, auto-deploys from `main`; Neon Free DB).
 Verified 2026-11-23: `/api/v1/health` → `{"status":"ok","db":"ok"}`, `/` serves the placeholder page.
@@ -13,7 +13,8 @@ First deploy failed because Render's **Root Directory** was `docker/` (it must b
 | 0 | Repo, docs, conventions, plan, skills, auditor agent | ✅ done |
 | P1 | Skeleton + CI + hooks + benchmark test (all xfail) | ✅ done |
 | P1b | Early deploy (Render + Neon) | ✅ done |
-| P2–P6 | Core maths → ledger → production → sales/invoice → payments (benchmark gate) | ⚪ |
+| P2 | Core maths: money, units, gst, wac, variance (pure, unit-tested) | ✅ done |
+| P3–P6 | Ledger → production → sales/invoice → payments (benchmark gate) | ⚪ P3 next |
 | P7–P9 | PDF + reports → frontend + offline queue → README/design note/deploy | ⚪ |
 | P10–P11 | Should-haves → stretch | ⚪ |
 
@@ -30,6 +31,8 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
   rebuilt by Alembic. Benchmark request shapes in `test_section5.py` are the contract: a phase may adjust a
   path or payload when it builds the endpoint, **never an expected number**.
 - API host port is `API_PORT` (default 8000) because another local project already uses 8000.
+- P2: variance flag compares exact values (`|diff| × 10000 > tol × planned`), not the rounded bp.
+  Receipt value is computed in the quoted unit before converting to base (per-gram rates aren't whole paise).
 
 ## Open issues
 - Hours/day unconfirmed (assumed ~6, H1).
@@ -39,10 +42,15 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 - Two Dockerfiles on purpose: root `Dockerfile` = production (Render); `backend/Dockerfile` = dev (compose,
   includes pytest/ruff, live reload).
 - Local `backend/.venv` exists only so the ruff hook works on the host (git-ignored).
+- Benchmark test vs roadmap P3 "done when": the reconcile and orphan checks call `sc.require(9)` and RBAC
+  `sc.require(4)`, so they can't pass in P3. P3 should lower reconcile/orphan to `sc.require(0)` (they then
+  check whatever has been posted so far, starting with the seed's OPENING movements). RBAC stays at step 4 (P5),
+  and P3 proves RBAC with its own integration test.
 
 ## Benchmark scoreboard
 
-`pytest -q`: 9 passed, 19 xfailed (2026-11-23). Every check currently stops at step 0 (`app.seed` not built).
+`pytest -q`: 73 passed, 19 xfailed (2026-11-23). Every check currently stops at step 0 (`app.seed` not built).
+The benchmark *arithmetic* (B8–B10, B12b, B13, A5) is already proven by unit tests in `tests/unit/`.
 
 | Check | Status |
 |---|---|
@@ -53,11 +61,20 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 
 ```
 Read CLAUDE.md and docs/project_status.md, then continue.
-Start phase P2 on branch feat/p2-core-maths, exactly as defined in docs/roadmap.md:
-pure modules in backend/app/core/ — money (integer paise, half-up rounding), units (to_base with Decimal,
-kg/g, l/ml, pcs, pkt; cross-dimension = error), gst (CGST+SGST vs IGST by state, per-line half-up),
-wac (moving weighted average, anti-drift on emptying issue), variance (bp, flag when |var| > tol strictly).
-No DB, no HTTP. Unit tests in backend/tests/unit/ covering the spec §4 numbers (B8, B9, B9b, B10, B12b
-taxes, B13 arithmetic). Benchmark checks stay xfail (they need the API). Finish with tests and lint green,
-/update-docs-and-commit, merge to main, the teaching protocol, and an updated next prompt for P3.
+Start phase P3 on branch feat/p3-ledger, exactly as defined in docs/roadmap.md. It is the biggest phase
+(~1.5 h): warn me if it may not fit, and split it into commits (auth, masters, ledger, audit, seed).
+- auth: app_user + roles, PyJWT + bcrypt, POST /auth/login, require_roles() deny-by-default; the 6 logins
+  from spec §2 (password = SEED_DEMO_PASSWORD).
+- masters: item (+item_unit packs), stock_lot, BOM + lines, customer (GSTIN, state), supplier, price list,
+  company settings (state 33). GET /items, /customers, /suppliers, /boms filterable by code (the shapes
+  test_section5.py step 0 uses).
+- inventory: stock_movement exactly as docs/architecture.md §3, append-only DB trigger (Alembic migration),
+  post_movements() as the only writer (uses core.units / core.wac), balance(), reconcile(),
+  GET /stock/balance/{item_id} → {"qty": "<decimal string>", "uom": "<base>"}.
+- audit: audit_log + record(). Seed: `python -m app.seed` with `run()`, opening stock from PROBLEM §5.
+Follow the stock-ledger skill. Lower the reconcile and orphan benchmark checks to sc.require(0) (see Open
+issues) and remove their xfail markers in the same commit once they pass; RBAC benchmark check stays xfail
+(needs orders, P5); add P3's own RBAC and trigger tests. Run the ledger-auditor only after P4.
+Finish with tests and lint green, /update-docs-and-commit, merge to main, the teaching protocol, and an
+updated next prompt for P4.
 ```

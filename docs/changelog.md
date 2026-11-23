@@ -6,6 +6,22 @@ Each milestone adds a section. Commit hashes are in `git log`.
 ## [Unreleased]
 
 ### Added
+- P1 skeleton: `docker-compose.yml` (db + api, test DB created on first start, `API_PORT` override),
+  FastAPI app with `GET /api/v1/health` (checks the DB), typed settings from env, Alembic wiring (no tables yet).
+- pytest on a separate `factoryflow_test` DB rebuilt by migrations; ruff config; GitHub Actions CI
+  (lint + tests on Postgres 16).
+- `backend/tests/benchmark/test_section5.py`: PROBLEM §5 steps 1–9 through the HTTP API, every spec §4
+  check as its own `xfail(strict=True)` test.
+- Claude Code project hooks (`.claude/settings.json`): block edits to `docs/PROBLEM.md` and `.env*`
+  (except `.env.example`); ruff format + fix on edited `.py` files.
+- `docs/interview_notes.md` (teaching protocol output, starting with P1).
+
+### Changed
+- `.env.example`: added `TEST_DATABASE_URL`.
+
+## Phase 0
+
+### Added
 - Phase 0 setup: problem statement (verbatim), `CLAUDE.md`, `.env.example`, `.gitignore`, `.gitattributes`.
 - Docs: `project_spec.md` (requirements, tiers, benchmark numbers, assumptions), `architecture.md` (provisional),
   `project_status.md`, this changelog.

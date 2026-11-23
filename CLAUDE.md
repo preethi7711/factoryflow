@@ -100,18 +100,19 @@ docs/                    # spec, architecture, status, changelog, PROBLEM
 
 ## 6. Commands
 
-> Status: **planned**. These become real as phases land; update this block when they do.
+> Status: real since P1 unless marked *(planned)*. Update this block as phases land.
 
 | Task | Command |
 | --- | --- |
 | Setup (first time) | `cp .env.example .env` then `docker compose build` |
-| Run everything | `docker compose up` (API on :8000, web on :5173) |
+| Run everything | `docker compose up` (API on :8000; `API_PORT=8001` if busy; web on :5173 *(planned, P8)*) |
 | DB migrate | `docker compose run --rm api alembic upgrade head` |
-| Seed benchmark data | `docker compose run --rm api python -m app.seed` |
+| Seed benchmark data | `docker compose run --rm api python -m app.seed` *(planned, P3)* |
 | Test (all) | `docker compose run --rm api pytest` |
-| Benchmark only | `docker compose run --rm api pytest -m benchmark -v` |
-| Lint backend | `docker compose run --rm api ruff check . && ruff format --check .` |
-| Lint frontend | `cd frontend && npm run lint` |
+| Benchmark only | `docker compose run --rm api pytest -m benchmark -v -rxX` |
+| Lint backend | `docker compose run --rm api sh -c "ruff check . && ruff format --check ."` |
+| Host venv (for the ruff hook) | `cd backend && py -3.12 -m venv .venv && .venv/Scripts/pip install -r requirements-dev.txt` |
+| Lint frontend | `cd frontend && npm run lint` *(planned, P8)* |
 
 ## 7. Installation
 

@@ -84,28 +84,30 @@ erDiagram
 ```
 
 **`stock_movement`** (the ledger):
-- Columns: `item_id`, `lot_id` NOT NULL, signed `qty`, signed `value_paise`, `movement_type` (OPENING, PURCHASE, ISSUE, OUTPUT, SCRAP, DISPATCH, ADJUST, COST_ADJUST, REVERSAL), `source_type` + `source_id` + `source_line_id` NOT NULL, `reverses_id`, `posted_at`, `posted_by`.
+- Columns: `item_id`, `lot_id` NOT NULL, signed `qty`, signed `value_paise`, `movement_type` (OPENING, PURCHASE, ISSUE, OUTPUT, SCRAP, DISPATCH, ADJUST, COST_ADJUST, REVERSAL), `movement_date` (the source document's business date, used by period reports; `posted_at` is only the wall clock), `source_type` + `source_id` + `source_line_id` NOT NULL, `reverses_id` (UNIQUE: reversed at most once), `posted_at`, `posted_by`.
+- `(lot_id, item_id)` is a composite FK to `stock_lot(id, item_id)`, so a movement can't point at another item's lot. A CHECK ties the qty sign to the type (issues negative, COST_ADJUST zero, ...).
 - Balance and value = `SUM(qty)` and `SUM(value_paise)` by item or lot. **There is no balance column.**
+- Opening stock and stock-take corrections have their own source document, `stock_adjustment` (+ lines, kind OPENING|ADJUST), so even day-one stock is traceable.
 
 Other key fields:
 - **`item`**: `kind` RAW|PACKAGING|FG, `base_uom`, `hsn`, `gst_rate_bp`, `sale_price_paise`, `variance_tol_bp` (default 300), `shelf_life_days`.
 - **`stock_lot`**: `lot_no`, `mfg_date`, `expiry_date`, `received_at`, source. Created by an opening, a purchase line or a run output.
 - **`invoice`**: `fy`, `seq`, `invoice_no` `FF/2026-27/0001`, `place_of_supply_state`, `supply_type` INTRA|INTER, totals.
   `invoice_sequence(fy, last_seq)` is row-locked, so numbering is gapless.
-- **`idempotency_key`**: key, user, route, request hash, stored response. **`audit_log`**: entity, id, action, before/after `jsonb`, user, time.
+- **`idempotency_key`**: key, user, route, request hash, stored response. **`audit_log`**: entity, id, action, before/after `jsonb`, user, time; append-only like the ledger.
 
 ## 4. Invariants: how each is enforced
 
 | Invariant | Mechanism | Proven by |
 |---|---|---|
-| Stock derived from ledger | balances are `SUM()` queries; no writable balance | `test_ledger_reconciles` |
-| Append-only ledger | DB trigger raises on UPDATE/DELETE of `stock_movement` | trigger test |
-| Traceability | `source_*` NOT NULL | `test_every_movement_has_source` |
+| Stock derived from ledger | balances are `SUM()` queries; no writable balance | `test_ledger_reconciles_after_every_step` |
+| Append-only ledger | DB trigger raises on UPDATE/DELETE/TRUNCATE of `stock_movement` and `audit_log` | `test_ledger_and_audit_log_are_append_only` |
+| Traceability | `source_*` NOT NULL; composite lot/item FK; sign CHECK | `test_database_rejects_bad_movements`; ledger invariants after every benchmark step and every integration test (`tests/invariants.py`) |
 | No negative stock | item rows locked `FOR UPDATE`, balance checked in the same txn | concurrency test |
 | Exact money and quantities | `int` paise, `Decimal` qty, half-up rounding at named points only | unit tests |
 | Posted docs immutable | state machine; cancel = credit note + REVERSAL movements | billing tests |
 | Audit | `audit.record()` in the same txn as the change | audit tests |
-| Role access | `require_roles()` on every route, deny by default | RBAC tests |
+| Role access | `require_roles()` on every route, deny by default; role read from the DB, not the token | `test_every_route_declares_its_roles` + role matrix |
 
 ## 5. The hard parts
 
@@ -124,7 +126,7 @@ Other key fields:
   3. Create the FG lot `RUN-0001` with expiry = run date + shelf life.
   4. Post OUTPUT +188, valued at material cost.
   5. Audit.
-- **Overheads added later** post a `COST_ADJUST` movement (qty 0, value > 0) on the run's FG lot. Append-only, and FG value stays right.
+- **Overheads added later** post a `COST_ADJUST` movement (qty 0, value > 0) on the run's FG lot. Append-only, and FG value stays right. Refused when the item has no stock left, because the value would sit on zero quantity.
 - **Cost per packet** = (materials + run overheads) / good output.
 - **Variance:**
   - Planned = BOM qty × batches. `var_bp = (actual − planned) × 10000 / planned`, half-up, for display.
@@ -142,7 +144,7 @@ Other key fields:
   - available = FG on hand − approved-but-undispatched qty.
   - Over-approval returns `INSUFFICIENT_STOCK` with requested, available, shortage and batches needed.
   - Admin can approve a partial quantity or hold the order.
-- **Lot allocation:** `inventory.allocate()` draws lots FIFO by `received_at`. FEFO = change the sort key to `expiry_date` (stretch toggle).
+- **Lot allocation:** an outflow that names no lot is split across lots by `post_movements()` itself, using `inventory.allocate()` (FIFO by `received_at`, under the item lock). FEFO = change the sort key to `expiry_date` (stretch toggle).
 - **Offline orders:**
   - The PWA queues each order in localStorage with `client_uuid = crypto.randomUUID()` and sends it as the `Idempotency-Key`.
   - Server: same key + same body hash → replay the stored response. Same key + different body → 409. `sales_order.client_uuid` is UNIQUE.

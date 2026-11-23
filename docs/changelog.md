@@ -6,6 +6,25 @@ Each milestone adds a section. Commit hashes are in `git log`.
 ## [Unreleased]
 
 ### Added
+- P3 `auth`: `app_user` with 5 roles, bcrypt passwords, JWT login (`POST /auth/login`, `GET /auth/me`),
+  `require_roles()` deny-by-default, a test that fails if any route forgets it, and a role matrix test.
+- P3 `masters`: items (+ pack units), BOMs stored in base units (one active per product), customers and
+  suppliers (soft GSTIN warnings), price list (`item.sale_price_paise`), company settings. GET + POST endpoints.
+- P3 `inventory`: `stock_movement` ledger (append-only trigger, composite lot/item FK, sign CHECK,
+  `movement_date`), lots, `stock_adjustment` documents, `post_movements()` as the only writer (item locks,
+  FIFO lot allocation, WAC values, anti-drift), `balance()`, `reconcile()`, `GET /stock/balance/{id}`,
+  `GET /stock/reconcile`.
+- P3 `audit`: append-only `audit_log`, written in the same transaction as the change.
+- Seed (`python -m app.seed`): PROBLEM §5 masters, opening stock as an OPENING document, six demo logins.
+- Error format `{"error": {"code", "message", "details"}}` for every failure, including 404/422.
+- Ledger invariants (reconcile, API = SUM(ledger), no orphans) checked after every benchmark step and after
+  every integration test. Benchmark: reconcile and orphan checks now pass.
+- Production refuses to start with a weak `JWT_SECRET_KEY` (32+ characters), without logging any value.
+- Assumptions A16 (shelf life 90 days) and A17 (opening stock dated 31 Oct 2026).
+
+## P2 core maths
+
+### Added
 - P2 core maths in `backend/app/core/` (pure, no DB/HTTP): `money` (paise, half-up, Indian ₹ format),
   `units` (Decimal `to_base`/`from_base`, item packs, cross-dimension errors, floats refused), `gst`
   (INTRA/INTER, per-line tax, FY, invoice numbers, soft GSTIN checks), `wac` (receipt/issue value with

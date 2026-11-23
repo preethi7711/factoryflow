@@ -107,4 +107,6 @@ B12b Distributor B tax preview INTER, IGST ₹300, total ₹6,300 · ledger reco
 | A13 | Lots vs cost | Every movement carries a lot (batch no, expiry) for traceability. Lots are drawn FIFO by receipt; FEFO is a stretch toggle. **Cost is WAC per item, not per lot.** |
 | A14 | Overheads timing | Benchmark step 8 adds overheads after dispatch, so they post as a value-only `COST_ADJUST` on the run's FG lot. COGS already booked for Retailer A is not restated. |
 | A15 | Purchase GST | Purchase rates are taken as tax-exclusive. Input GST is recorded on the purchase but not used in costing. |
+| A16 | Shelf life | Not given. Murukku is seeded with **90 days**, so a run's FG lot expires 90 days after the run date. Configurable per item. |
+| A17 | Opening date | Opening stock is dated **31 Oct 2026**, the day before the benchmark month, so November reports show it as the opening balance. |
 | H1 | Time budget | About 2 days at about 6 focused h/day (the hours/day were not specified). The plan is sized for about 13 h and has explicit cut lines. |

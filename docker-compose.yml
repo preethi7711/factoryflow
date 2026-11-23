@@ -1,0 +1,32 @@
+# Local stack: Postgres + API. Usage: docker compose up
+services:
+  db:
+    image: postgres:16-alpine
+    env_file: .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Runs once, on the very first start: creates the separate test database.
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/01-create-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build: ./backend
+    env_file: .env
+    ports:
+      # Host port is overridable if 8000 is busy: API_PORT=8001 docker compose up
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app # live code reload in development
+    depends_on:
+      db:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  pgdata:

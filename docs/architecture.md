@@ -36,7 +36,7 @@ invoice or run that causes it.
 | Layer | Choice | Rejected (why) |
 |---|---|---|
 | DB | PostgreSQL 16 | SQLite: weak NUMERIC, no `SELECT … FOR UPDATE` |
-| API | FastAPI, SQLAlchemy 2, Alembic, Pydantic v2 | Django: more framework magic to explain live |
+| API | FastAPI, SQLAlchemy 2 (sync, psycopg 3), Alembic, Pydantic v2 + pydantic-settings | Django: more framework magic to explain live; async SQLAlchemy: harder to debug for ~20 users |
 | Auth | PyJWT + `bcrypt` | passlib: unmaintained |
 | PDF | fpdf2 + bundled DejaVu TTF (₹ glyph) | WeasyPrint: needs Pango/Cairo system libs |
 | Export | openpyxl + stdlib `csv` | pandas: heavy for simple exports |

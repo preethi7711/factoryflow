@@ -6,6 +6,16 @@ Each milestone adds a section. Commit hashes are in `git log`.
 ## [Unreleased]
 
 ### Added
+- P1b: root multi-stage `Dockerfile` (Node builds `frontend/`, slim Python serves API + built files as a
+  non-root user, listens on `$PORT`, runs `alembic upgrade head` on start) and root `.dockerignore`.
+- Placeholder React + Vite frontend (`frontend/`) showing live API/DB health.
+- FastAPI serves the built app (`STATIC_DIR`) with an index.html fallback for client routes; `/api` stays JSON 404.
+- `DATABASE_URL` from hosts (`postgres://`, `postgresql://`) is rewritten to the psycopg 3 driver.
+- CI job that builds the production image.
+
+## P1 skeleton
+
+### Added
 - P1 skeleton: `docker-compose.yml` (db + api, test DB created on first start, `API_PORT` override),
   FastAPI app with `GET /api/v1/health` (checks the DB), typed settings from env, Alembic wiring (no tables yet).
 - pytest on a separate `factoryflow_test` DB rebuilt by migrations; ruff config; GitHub Actions CI

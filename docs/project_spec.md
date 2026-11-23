@@ -19,6 +19,17 @@ and in the demo video.
 | auditor | read and export all reports | write anything |
 | owner | read dashboard and all reports | (read-only in prototype) |
 
+**Seeded test logins** (dev/demo only; password = `SEED_DEMO_PASSWORD` from `.env`; listed in the README):
+
+| Username | Role | Notes |
+|---|---|---|
+| `salesman_a` | salesman | owns Retailer A (TN) |
+| `salesman_b` | salesman | owns Distributor B (KA) |
+| `admin` | admin | billing desk |
+| `production` | production | floor supervisor |
+| `accountant` | auditor | read-only reports |
+| `owner` | owner | dashboard |
+
 ## 3. Requirements by tier
 
 IDs are referenced from tests and commits.
@@ -39,9 +50,12 @@ IDs are referenced from tests and commits.
 
 > S1 (purchase) and S3 (cost) are needed by benchmark steps 1, 7 and 8, so a minimal version is built **with** the must-haves.
 
+> **Minimal offline order queue** (localStorage + `Idempotency-Key`) is built in P8 with the salesman UI, because
+> §4.1 calls it "strongly preferred". Lot/expiry *fields* exist from day one (stretch only switches FEFO on).
+
 ### Stretch (only after the benchmark is green)
-Offline order sync · batch/expiry + FEFO · reorder alerts · production planning from pending orders ·
-GPS visit log · Tally export · e-Invoice/e-Way Bill mock · Tamil UI.
+FEFO dispatch · production planning from pending orders · reorder alerts · Tally export ·
+GPS visit log · e-Invoice/e-Way Bill mock · Tamil UI.
 
 ## 4. Benchmark: expected numbers (asserted in `tests/benchmark/`)
 
@@ -63,6 +77,9 @@ Master data and steps: see [PROBLEM.md §5](PROBLEM.md). Factory state = Tamil N
 | B12 | Distributor B | **shortage 32 flagged**; if invoiced: IGST 5% | 120 − 88. 120 × 50 = 6,000 + 300 IGST = 6,300 |
 | B13 | Cost per packet | **₹31.14** (proposed, see below) | weighted average + direct overheads per run |
 
+Extra checks asserted alongside: B9b pouch −3.00% **not** flagged (A2 boundary) · B10b invoice no `FF/2026-27/0001` ·
+B12b Distributor B tax preview INTER, IGST ₹300, total ₹6,300 · ledger reconciles · no orphan movements · salesman gets 403 on approve.
+
 ### B13: proposed cost per packet (weighted average cost, overheads charged to the run)
 - Flour WAC at issue = (100×42 + 60×45) / 160 = 6,900 / 160 = **₹43.125/kg** → 40 kg = ₹1,725.00
 - Oil 10.5 × 140 = ₹1,470.00 · Spice 1.2 × 200 = ₹240.00
@@ -79,7 +96,7 @@ Master data and steps: see [PROBLEM.md §5](PROBLEM.md). Factory state = Tamil N
 | A2 | "Beyond 3%" | Flag when \|variance\| **> 3.00%** strictly. Tolerance is configurable per item. |
 | A3 | Pouch variance | 194 used vs 200 standard = −3.00% → **not flagged** under A2. (Against good output, 194 vs 188 = +3.19%. We report the yield loss separately as B8.) |
 | A4 | Cartons | 9 used vs 10 standard = −10% under-use, flagged. 188 pkts = 9 full cartons + 8 loose. Shown as info, not as a loss. |
-| A5 | Opening FG cost | 50 opening packets of Murukku are valued at this run's cost per packet (no history given). Affects COGS only, not B13. |
+| A5 | Opening FG cost | No history is given, so the 50 opening packets are valued at **standard material cost at opening rates**: (40×42 + 10×140 + 1.2×200 + 200×2.50 + 10×15) / 200 = **₹19.85/pkt**. Affects stock value and COGS only, not B13. |
 | A6 | Valuation | Weighted average cost (moving, recomputed on each receipt). Simple, auditable, standard for fungible materials. |
 | A7 | Overheads | Labour and gas/power are entered against a specific run and divided by **good** output. Monthly overheads (if any) are allocated by good packets produced. |
 | A8 | Rounding | Tax computed per invoice line, rounded half-up to the paisa. No rupee round-off in the benchmark. |
@@ -87,3 +104,7 @@ Master data and steps: see [PROBLEM.md §5](PROBLEM.md). Factory state = Tamil N
 | A10 | Wastage of oil/spice | Issued qty is treated as fully consumed (no return-to-store) unless a return movement is posted. |
 | A11 | Units | Each item has one base unit (g, ml, pcs). kg/L/carton are conversions. Packets of FG are the FG base unit. |
 | A12 | Invoice numbering | `FF/<FY>/<seq>` e.g. `FF/2026-27/0001`, gapless per FY. Cancelled numbers stay used (credit note issued). |
+| A13 | Lots vs cost | Every movement carries a lot (batch no, expiry) for traceability. Lots are drawn FIFO by receipt; FEFO is a stretch toggle. **Cost is WAC per item, not per lot.** |
+| A14 | Overheads timing | Benchmark step 8 adds overheads after dispatch, so they post as a value-only `COST_ADJUST` on the run's FG lot. COGS already booked for Retailer A is not restated. |
+| A15 | Purchase GST | Purchase rates are taken as tax-exclusive. Input GST is recorded on the purchase but not used in costing. |
+| H1 | Time budget | About 2 days at about 6 focused h/day (the hours/day were not specified). The plan is sized for about 13 h and has explicit cut lines. |

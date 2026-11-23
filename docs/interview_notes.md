@@ -77,3 +77,39 @@ static mount returns `index.html` → the page's JS calls `/api/v1/health` on th
 Show the API version on the placeholder page: add `"version"` to the health response (the P1 practice change)
 and render it in `frontend/src/App.jsx`. Build with `docker build -t factoryflow .` and run it locally
 with `-e PORT=10000`.
+
+## P2: Core maths
+
+### What it is
+- Five pure modules in `backend/app/core/` with no database and no HTTP: `money`, `units`, `gst`, `wac`,
+  `variance`. Every number in the benchmark comes out of these, so they are tested on their own first.
+- Pure functions are fast to test (64 tests in under a second) and easy to explain line by line.
+
+### The 3 files that matter
+1. `core/money.py`: `round_half_up` (the only rounding function), `apply_bp`, `format_inr`.
+2. `core/wac.py`: `receipt_value`, `issue_value` (with the anti-drift rule), `cost_per_unit_paise`.
+3. `core/gst.py`: `supply_type` by state, `line_tax` per line, `financial_year`, `invoice_no`.
+
+### One trace: B13 cost per packet (`tests/unit/test_wac.py::test_b13_cost_per_packet`)
+Flour WAC: (100 kg × 42 + 60 kg × 45) / 160 kg = 43.125 → `issue_value(40000 g, 160000 g, 690000)` = 172500
+→ add oil 147000, spice 24000, pouches 48500 (194 incl. 6 damaged), cartons 13500 = 405500 materials
+→ + 180000 overheads = 585500 → `cost_per_unit_paise(585500, 188)` = 3114.36 → **3114 paise = ₹31.14**.
+
+### Five likely questions
+1. **Why paise and not float?** Floats can't store 0.1 exactly, so totals drift. Integer paise are exact; we
+   round only at four named points (receipt value, issue value, each tax component per line, cost per unit).
+2. **Why half-up and not Python's `round()`?** `round()` is banker's rounding (2.5 → 2). Invoices and auditors
+   expect 2.5 → 3. `Decimal.to_integral_value(ROUND_HALF_UP)` does exactly that.
+3. **Why tax per line and not on the total?** The printed lines must add up to the printed total. Example in
+   the tests: two lines of 1010 paise at 5% IGST are 51 + 51 = 102, while 5% of 2020 would be 101.
+4. **What is the anti-drift rule?** An issue that empties the stock takes all the remaining value. Without it,
+   3 units worth 100 paise issued one by one leave a stray paisa on zero stock forever.
+5. **Why is exactly −3.00% on pouches not flagged?** Our assumption A2 says "beyond 3%" means strictly greater.
+   And the flag uses the exact values, so +3.004% (which rounds to 300 bp) is still flagged.
+
+Bonus: **Why compute purchase value before converting to grams?** ₹45/kg is 4.5 paise per gram, which isn't a
+whole paisa. 60 kg × 4500 paise is exact.
+
+### Practice change (do it alone)
+Add `credit_note_no(fy, seq)` to `core/gst.py` returning `FF/CN/2026-27/0001` (the format in the gst-rules
+skill), with a test for seq 1 and seq 0 (error). Run `docker compose run --rm api pytest tests/unit -q`.

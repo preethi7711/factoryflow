@@ -101,7 +101,7 @@ def test_invalid_items_are_refused(client, as_user, change) -> None:
 
 
 def test_new_product_and_bom_in_kitchen_units(client, as_user) -> None:
-    admin, production = as_user("admin"), as_user("production")
+    admin = as_user("admin")  # BOMs are masters: admin only (spec section 2)
     item = {
         "code": "PAKODA-200G",
         "name": "Ribbon pakoda 200 g",
@@ -122,14 +122,14 @@ def test_new_product_and_bom_in_kitchen_units(client, as_user) -> None:
     }
 
     wrong_unit = {**bom, "lines": [{"item_id": flour["id"], "qty": "30", "uom": "l"}]}
-    r = client.post(f"{API}/boms", json=wrong_unit, headers=production)
+    r = client.post(f"{API}/boms", json=wrong_unit, headers=admin)
     assert (r.status_code, r.json()["error"]["code"]) == (422, "UNIT_ERROR")  # flour isn't liquid
 
     float_qty = {**bom, "lines": [{"item_id": flour["id"], "qty": 30.5, "uom": "kg"}]}
-    r = client.post(f"{API}/boms", json=float_qty, headers=production)
+    r = client.post(f"{API}/boms", json=float_qty, headers=admin)
     assert (r.status_code, r.json()["error"]["code"]) == (422, "VALIDATION_ERROR")
 
-    created = client.post(f"{API}/boms", json=bom, headers=production)
+    created = client.post(f"{API}/boms", json=bom, headers=admin)
     assert created.status_code == 201, created.text
     assert created.json()["lines"][0]["qty"] == "30000.000"  # 30 kg stored as grams
 

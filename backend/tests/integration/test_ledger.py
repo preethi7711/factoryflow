@@ -14,7 +14,7 @@ from app.auth.models import AppUser
 from app.core.db import engine
 from app.core.wac import InsufficientStockError
 from app.inventory import service as stock
-from app.inventory.models import MovementType, SourceType
+from app.inventory.models import MovementType, SourceType, StockAdjustment
 from app.inventory.service import MovementLine
 from app.masters.models import Item
 
@@ -42,10 +42,17 @@ def _first_lot(db, code: str) -> int:
 
 
 def _post(db, *lines: MovementLine, source_type: SourceType = SourceType.STOCK_ADJUSTMENT):
+    # Post against a real stock_adjustment document: post_movements now refuses an orphan source,
+    # and that is correct. source_type is kept for call-site readability; the document is real.
+    doc = StockAdjustment(
+        kind="ADJUST", adj_date=ON, reason="ledger test", created_by=_admin_id(db)
+    )
+    db.add(doc)
+    db.flush()
     return stock.post_movements(
         db,
-        source_type=source_type,
-        source_id=999,
+        source_type=SourceType.STOCK_ADJUSTMENT,
+        source_id=doc.id,
         movement_date=ON,
         user_id=_admin_id(db),
         lines=list(lines),

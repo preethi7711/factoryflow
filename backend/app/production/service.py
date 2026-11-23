@@ -142,6 +142,15 @@ def start_run(db: Session, data: RunCreate, user: AppUser) -> RunOut:
         batches = check_qty_scale(data.batches)
     except ValueError as exc:
         raise AppError(422, "INVALID_QUANTITY", str(exc)) from None
+    # Lock every item this run touches BEFORE inserting rows that reference them. Inserting first
+    # would take a weaker FOR KEY SHARE lock on those item rows, and a second concurrent run
+    # holding the same share lock would then deadlock on the FOR UPDATE instead of waiting.
+    item_ids = {
+        bom.item_id,
+        *(line.item_id for line in bom.lines),
+        *(i.item_id for i in data.issues),
+    }
+    masters.lock_items(db, item_ids)
     run = ProductionRun(
         bom_id=bom.id,
         item_id=bom.item_id,
@@ -192,6 +201,9 @@ def complete_run(db: Session, run_id: int, data: RunComplete, user: AppUser) -> 
         consumption.damaged_qty = damaged  # info only: the damaged units are already in the issue
 
     product = masters.get_item(db, run.item_id)
+    masters.lock_items(
+        db, [product.id]
+    )  # lock the FG item before inserting its new lot (see start_run)
     good = masters.base_qty(data.output_qty, data.output_uom or product.base_uom, product)
     expiry = (
         run.run_date + timedelta(days=product.shelf_life_days) if product.shelf_life_days else None

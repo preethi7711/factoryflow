@@ -8,9 +8,16 @@ from sqlalchemy.orm import Session
 from app.inventory import service as stock
 
 MOVEMENTS = text("SELECT COUNT(*) FROM stock_movement")
+# A real orphan check (invariant 6): count movements whose (source_type, source_id) names no
+# existing document. source_* are already NOT NULL, so the old "IS NULL" query could never fire.
 ORPHANS = text(
-    "SELECT COUNT(*) FROM stock_movement"
-    " WHERE source_type IS NULL OR source_id IS NULL OR source_line_id IS NULL"
+    "SELECT COUNT(*) FROM stock_movement m"
+    " WHERE NOT EXISTS (SELECT 1 FROM purchase p"
+    "                    WHERE m.source_type = 'purchase' AND p.id = m.source_id)"
+    "   AND NOT EXISTS (SELECT 1 FROM production_run r"
+    "                    WHERE m.source_type = 'production_run' AND r.id = m.source_id)"
+    "   AND NOT EXISTS (SELECT 1 FROM stock_adjustment a"
+    "                    WHERE m.source_type = 'stock_adjustment' AND a.id = m.source_id)"
 )
 LEDGER_SUM = text("SELECT COALESCE(SUM(qty), 0) FROM stock_movement WHERE item_id = :item_id")
 

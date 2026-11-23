@@ -18,6 +18,10 @@ GLOBAL_UNITS: dict[str, tuple[str, Decimal]] = {
 }
 
 
+# Discrete base units: quantities must be whole numbers (you can't have half a packet).
+COUNT_UNITS = frozenset({"pcs", "pkt"})
+
+
 class UnitError(ValueError):
     """Unknown unit, wrong dimension, or a base unit that isn't one."""
 

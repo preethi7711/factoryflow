@@ -57,6 +57,9 @@ def create_purchase(db: Session, data: PurchaseCreate, user: AppUser) -> Purchas
     value, input GST recorded but not added to stock value (A15). One transaction."""
     supplier = masters.get_supplier(db, data.supplier_id)
     supply = gst.supply_type(masters.get_company(db).state_code, supplier.state_code)
+    # Lock the items before inserting lots/lines that reference them, to avoid the lock-upgrade
+    # deadlock two concurrent posts would otherwise hit (see production.start_run).
+    masters.lock_items(db, (line.item_id for line in data.lines))
     purchase = Purchase(
         supplier_id=supplier.id,
         purchase_date=data.purchase_date,

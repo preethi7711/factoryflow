@@ -31,7 +31,6 @@ SalesReader = Annotated[
     AppUser, Depends(require_roles(Role.SALESMAN, Role.ADMIN, Role.AUDITOR, Role.OWNER))
 ]
 Admin = Annotated[AppUser, Depends(require_roles(Role.ADMIN))]
-BomEditor = Annotated[AppUser, Depends(require_roles(Role.ADMIN, Role.PRODUCTION))]
 
 
 @router.get("/items", response_model=list[ItemOut])
@@ -91,5 +90,5 @@ def list_boms(db: DbSession, user: MasterReader, item_id: int | None = None) -> 
 
 
 @router.post("/boms", response_model=BomOut, status_code=status.HTTP_201_CREATED)
-def create_bom(body: BomCreate, db: DbSession, user: BomEditor) -> BomOut:
+def create_bom(body: BomCreate, db: DbSession, user: Admin) -> BomOut:
     return service.create_bom(db, body, user)

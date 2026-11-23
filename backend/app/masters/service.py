@@ -128,6 +128,13 @@ def price_list(db: Session) -> list[Item]:
 # ---- customers and suppliers ---------------------------------------------------------
 
 
+def get_customer(db: Session, customer_id: int) -> Customer:
+    customer = db.get(Customer, customer_id)
+    if customer is None:
+        raise not_found("customer", customer_id)
+    return customer
+
+
 def list_customers(db: Session, *, code: str | None = None) -> list[Customer]:
     q = select(Customer).order_by(Customer.code)
     if code:

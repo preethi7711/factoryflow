@@ -467,7 +467,6 @@ def test_no_orphan_movements_after_any_step(sc):
     assert [c for c in sc.invariants if c.orphans] == []
 
 
-@NOT_BUILT
 def test_salesman_cannot_approve_order(sc):
     sc.require(4)
     assert sc.snap["salesman_approve_status"] == 403

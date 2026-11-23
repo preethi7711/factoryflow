@@ -13,6 +13,7 @@ from app.inventory.router import router as stock_router
 from app.masters.router import router as masters_router
 from app.production.router import router as production_router
 from app.purchasing.router import router as purchasing_router
+from app.sales.router import router as sales_router
 
 API_PREFIX = "/api/v1"
 
@@ -35,6 +36,7 @@ def create_app() -> FastAPI:
         stock_router,
         purchasing_router,
         production_router,
+        sales_router,
     )
     for router in routers:
         app.include_router(router, prefix=API_PREFIX)

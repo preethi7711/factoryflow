@@ -333,37 +333,31 @@ def _line(variance: dict, code: str) -> dict:
 # --- Checks (docs/project_spec.md section 4) ------------------------------------------
 
 
-@NOT_BUILT
 def test_b1_flour_closing_120_kg(sc):
     sc.require(3)
     assert sc.snap["after_run"][FLOUR] == (Decimal("120000"), "g")
 
 
-@NOT_BUILT
 def test_b2_oil_closing_19_5_l(sc):
     sc.require(3)
     assert sc.snap["after_run"][OIL] == (Decimal("19500"), "ml")
 
 
-@NOT_BUILT
 def test_b3_spice_closing_3_8_kg(sc):
     sc.require(3)
     assert sc.snap["after_run"][SPICE] == (Decimal("3800"), "g")
 
 
-@NOT_BUILT
 def test_b4_pouches_closing_306(sc):
     sc.require(3)
     assert sc.snap["after_run"][POUCH] == (Decimal("306"), "pcs")
 
 
-@NOT_BUILT
 def test_b5_cartons_closing_21(sc):
     sc.require(3)
     assert sc.snap["after_run"][CARTON] == (Decimal("21"), "pcs")
 
 
-@NOT_BUILT
 def test_b6_fg_after_run_238(sc):
     sc.require(3)
     assert sc.snap["after_run"][MURUKKU] == (Decimal("238"), "pkt")
@@ -375,7 +369,6 @@ def test_b7_fg_after_retailer_a_dispatch_88(sc):
     assert sc.snap["fg_after_dispatch"] == (Decimal("88"), "pkt")
 
 
-@NOT_BUILT
 def test_b8_yield_variance_minus_6_pct_flagged(sc):
     sc.require(3)
     y = sc.snap["variance"]["yield"]
@@ -385,7 +378,6 @@ def test_b8_yield_variance_minus_6_pct_flagged(sc):
     assert y["flagged"] is True
 
 
-@NOT_BUILT
 def test_b9_oil_variance_plus_5_pct_flagged(sc):
     sc.require(3)
     oil = _line(sc.snap["variance"], OIL)
@@ -393,7 +385,6 @@ def test_b9_oil_variance_plus_5_pct_flagged(sc):
     assert oil["flagged"] is True
 
 
-@NOT_BUILT
 def test_b9b_pouch_variance_minus_3_pct_not_flagged(sc):
     # A2: flag only when |variance| > 3.00% strictly. 194 vs 200 = exactly -3.00%.
     sc.require(3)

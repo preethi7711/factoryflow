@@ -325,9 +325,17 @@ def post_movements(
                 last = len(parts) - 1
                 for i, (lot_id, part) in enumerate(parts):
                     _lot_of_item(db, lot_id, line.item_id)
-                    in_lot, _ = balance(db, line.item_id, lot_id=lot_id, as_of=movement_date)
-                    if part > in_lot:
-                        raise InsufficientStockError(part, in_lot)
+                    # A lot has exactly one inflow (its creation); only outflows follow, so its
+                    # balance never rises after that date and the current balance is its lowest
+                    # point from the movement date on. Check the as-of-date balance AND the current
+                    # one: the first stops drawing stock before it arrived, the second stops a
+                    # backdated outflow from taking stock a later-dated outflow already took (which
+                    # would leave the lot negative on that later date, so reconcile is never clean).
+                    in_lot_asof, _ = balance(db, line.item_id, lot_id=lot_id, as_of=movement_date)
+                    in_lot_now, _ = balance(db, line.item_id, lot_id=lot_id)
+                    available = min(in_lot_asof, in_lot_now)
+                    if part > available:
+                        raise InsufficientStockError(part, available)
                     if i == last:
                         value = total_value - allocated  # remainder, so the parts sum exactly
                     else:

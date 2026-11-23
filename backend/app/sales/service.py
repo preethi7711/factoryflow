@@ -106,7 +106,11 @@ def _request_hash(data: OrderCreate) -> str:
     return hashlib.sha256(data.model_dump_json().encode()).hexdigest()
 
 
-def _replay(existing: IdempotencyKey, request_hash: str) -> OrderOut:
+def _replay(existing: IdempotencyKey, request_hash: str, user: AppUser) -> OrderOut:
+    # The key belongs to the user who first used it; another user presenting it must not be handed
+    # that order (it would leak the customer and prices). The honest retry is the same user.
+    if existing.user_id != user.id:
+        raise AppError(403, "FORBIDDEN", "this Idempotency-Key belongs to another user")
     if existing.route != ORDER_ROUTE or existing.request_hash != request_hash:
         raise AppError(
             409,
@@ -125,73 +129,74 @@ def create_order(db: Session, key: str, data: OrderCreate, user: AppUser) -> Ord
     request_hash = _request_hash(data)
     existing = db.get(IdempotencyKey, key)
     if existing is not None:
-        return _replay(existing, request_hash)
+        return _replay(existing, request_hash, user)
 
     customer = masters.get_customer(db, data.customer_id)
     if user.role == Role.SALESMAN and customer.salesman_id != user.id:
         raise AppError(403, "FORBIDDEN", f"{customer.code} is not your customer")
 
-    order = SalesOrder(
-        client_uuid=key,
-        customer_id=customer.id,
-        salesman_id=user.id,
-        order_date=data.order_date,
-        status=OrderStatus.PENDING.value,
-        created_by=user.id,
-    )
-    db.add(order)
-    db.flush()
-    seen: set[int] = set()
-    for line_in in data.lines:
-        item = masters.get_item(db, line_in.item_id)
-        if item.kind != ItemKind.FG:
-            raise AppError(422, "NOT_SELLABLE", f"{item.code} is not a finished good")
-        if item.sale_price_paise is None:
-            raise AppError(422, "NO_PRICE", f"{item.code} has no sale price")
-        if item.id in seen:
-            raise AppError(422, "DUPLICATE_LINE", f"{item.code} is listed twice")
-        seen.add(item.id)
+    # Everything from the first INSERT to the commit runs in one try: under a concurrent double-tap
+    # the UNIQUE on client_uuid / the idempotency key fires here (often at the flush below, not only
+    # at commit), so we catch it, roll back and replay the winner instead of 500-ing the loser.
+    try:
+        order = SalesOrder(
+            client_uuid=key,
+            customer_id=customer.id,
+            salesman_id=user.id,
+            order_date=data.order_date,
+            status=OrderStatus.PENDING.value,
+            created_by=user.id,
+        )
+        db.add(order)
+        db.flush()
+        seen: set[int] = set()
+        for line_in in data.lines:
+            item = masters.get_item(db, line_in.item_id)
+            if item.kind != ItemKind.FG:
+                raise AppError(422, "NOT_SELLABLE", f"{item.code} is not a finished good")
+            if item.sale_price_paise is None:
+                raise AppError(422, "NO_PRICE", f"{item.code} has no sale price")
+            if item.id in seen:
+                raise AppError(422, "DUPLICATE_LINE", f"{item.code} is listed twice")
+            seen.add(item.id)
+            db.add(
+                OrderLine(
+                    order_id=order.id,
+                    item_id=item.id,
+                    qty=masters.base_qty(line_in.qty, line_in.uom, item),
+                    uom=item.base_uom,
+                    unit_price_paise=item.sale_price_paise,  # priced by the server, not the client
+                    gst_rate_bp=item.gst_rate_bp,
+                )
+            )
+        db.flush()
+        db.refresh(order)  # load the lines just inserted
+        out = _out(db, order)
         db.add(
-            OrderLine(
-                order_id=order.id,
-                item_id=item.id,
-                qty=masters.base_qty(line_in.qty, line_in.uom, item),
-                uom=item.base_uom,
-                unit_price_paise=item.sale_price_paise,  # priced by the server, from the price list
-                gst_rate_bp=item.gst_rate_bp,
+            IdempotencyKey(
+                key=key,
+                user_id=user.id,
+                route=ORDER_ROUTE,
+                request_hash=request_hash,
+                status_code=201,
+                response_json=out.model_dump(mode="json"),
             )
         )
-    db.flush()
-    db.refresh(order)  # load the lines just inserted
-    out = _out(db, order)
-    db.add(
-        IdempotencyKey(
-            key=key,
+        audit.record(
+            db,
+            entity="sales_order",
+            entity_id=order.id,
+            action="CREATE",
             user_id=user.id,
-            route=ORDER_ROUTE,
-            request_hash=request_hash,
-            status_code=201,
-            response_json=out.model_dump(mode="json"),
+            after=out.model_dump(mode="json"),
         )
-    )
-    audit.record(
-        db,
-        entity="sales_order",
-        entity_id=order.id,
-        action="CREATE",
-        user_id=user.id,
-        after=out.model_dump(mode="json"),
-    )
-    try:
         db.commit()
     except IntegrityError:
-        # A concurrent request with the same key committed first (UNIQUE on the key / client_uuid).
-        # Replay its stored result instead of failing the double-tap.
         db.rollback()
         winner = db.get(IdempotencyKey, key)
         if winner is None:
             raise
-        return _replay(winner, request_hash)
+        return _replay(winner, request_hash, user)
     return out
 
 

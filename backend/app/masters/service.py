@@ -9,7 +9,7 @@ from app.auth.models import AppUser, Role
 from app.auth.service import get_active_user
 from app.core.errors import AppError, not_found
 from app.core.gst import gstin_warnings
-from app.core.units import UnitError, check_qty_scale, to_base
+from app.core.units import COUNT_UNITS, UnitError, check_qty_scale, to_base
 from app.masters.models import (
     Bom,
     BomLine,
@@ -38,14 +38,21 @@ def _ensure_new_code(db: Session, model: type[Item | Customer | Supplier | Bom],
         raise AppError(409, "DUPLICATE_CODE", f"{model.__tablename__} code {code} already exists")
 
 
-def _base_qty(qty: Decimal, uom: str, item: Item) -> Decimal:
+def base_qty(qty: Decimal, uom: str, item: Item) -> Decimal:
     """User input -> the item's base unit, with a clean 422 for an impossible quantity."""
     try:
-        return check_qty_scale(to_base(qty, uom, item.base_uom, item.pack_units()))
+        base = check_qty_scale(to_base(qty, uom, item.base_uom, item.pack_units()))
     except UnitError:
         raise  # has its own handler (422 UNIT_ERROR)
     except ValueError as exc:
         raise AppError(422, "INVALID_QUANTITY", str(exc)) from None
+    # Pieces and packets are discrete: half a pouch or 187.5 packets is physically meaningless,
+    # and packets are the invoice unit (core.gst assumes whole packets).
+    if item.base_uom in COUNT_UNITS and base % 1 != 0:
+        raise AppError(
+            422, "INVALID_QUANTITY", f"{item.base_uom} must be a whole number, got {base}"
+        )
+    return base
 
 
 def get_company(db: Session) -> CompanySettings:
@@ -145,6 +152,13 @@ def create_customer(db: Session, data: CustomerCreate, user: AppUser) -> tuple[C
     return customer, gstin_warnings(data.gstin, data.state_code)
 
 
+def get_supplier(db: Session, supplier_id: int) -> Supplier:
+    supplier = db.get(Supplier, supplier_id)
+    if supplier is None:
+        raise not_found("supplier", supplier_id)
+    return supplier
+
+
 def list_suppliers(db: Session, *, code: str | None = None) -> list[Supplier]:
     q = select(Supplier).order_by(Supplier.code)
     if code:
@@ -186,6 +200,19 @@ def _bom_out(bom: Bom) -> BomOut:
     )
 
 
+def get_bom(db: Session, bom_id: int) -> Bom:
+    """The BOM with its product and lines loaded (each line's ingredient too)."""
+    q = (
+        select(Bom)
+        .where(Bom.id == bom_id)
+        .options(selectinload(Bom.item), selectinload(Bom.lines).selectinload(BomLine.item))
+    )
+    bom = db.scalar(q)
+    if bom is None:
+        raise not_found("BOM", bom_id)
+    return bom
+
+
 def list_boms(db: Session, *, item_id: int | None = None) -> list[BomOut]:
     """Active BOMs only: an inactive recipe must never be picked for a new run."""
     q = (
@@ -213,11 +240,11 @@ def create_bom(db: Session, data: BomCreate, user: AppUser) -> BomOut:
             raise AppError(422, "INVALID_BOM_LINE", f"{ingredient.code} is a finished good")
         if any(existing.item_id == ingredient.id for existing in lines):
             raise AppError(422, "INVALID_BOM_LINE", f"{ingredient.code} is listed twice")
-        lines.append(BomLine(item_id=ingredient.id, qty=_base_qty(line.qty, line.uom, ingredient)))
+        lines.append(BomLine(item_id=ingredient.id, qty=base_qty(line.qty, line.uom, ingredient)))
     bom = Bom(
         code=data.code,
         item_id=product.id,
-        output_qty=_base_qty(data.output_qty, data.output_uom, product),
+        output_qty=base_qty(data.output_qty, data.output_uom, product),
         lines=lines,
     )
     db.add(bom)

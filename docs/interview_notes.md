@@ -161,3 +161,61 @@ Add a stock-take endpoint: `POST /api/v1/stock/adjustments` (roles admin, produc
 through `post_movements()`, write an audit row, commit. Test: flour counted at 98 kg → post −2 kg → balance
 98 kg and `reconcile()` is clean. Hint: a negative adjustment is valued at WAC by `post_movements()`; a positive
 one needs a value (use the current average cost).
+
+## P4: Purchases and production runs
+
+### What it is
+- **Purchases** bring stock in: one lot per line, valued at what was paid before tax.
+- **Production runs** turn materials into finished goods: issue raw materials, issue packaging, post the
+  good output at material cost, compare actual with the BOM (variance), add overheads, get cost per packet.
+
+### The 3 files that matter
+1. `backend/app/production/service.py`: `start_run`, `complete_run`, `add_overheads`, `run_variance`, `run_cost`.
+2. `backend/app/purchasing/service.py`: `create_purchase`.
+3. `backend/tests/integration/test_production.py`: the benchmark flow through the API, including B13.
+
+### One trace: `POST /api/v1/production-runs/1/complete` (step 3 of the benchmark)
+`require_roles(production)` → lock the run row → still DRAFT? → issue 194 pouches and 9 cartons through
+`post_movements()` (item locks, FIFO lots, WAC: 48500 + 13500 paise) → read actual consumption back from the
+ledger → record 6 damaged pouches (must be ≤ issued) → create FG lot `RUN-0001` (expiry run date + 90 days) →
+material cost = −SUM(the run's ISSUE values) = 405500 → post OUTPUT +188 packets at 405500 → status COMPLETED →
+audit row with before/after → one commit.
+
+### Five likely questions
+1. **Why WAC and not FIFO costing?** Flour from two purchases sits in one bin. WAC gives one honest unit cost
+   (₹43.125/kg) that is easy to audit. FIFO costing would need lot-level costs for every issue. Lots still exist
+   and are picked FIFO, but only for traceability and expiry.
+2. **How is variance flagged?** Planned = BOM × batches. Variance = (actual − planned) / planned, in basis points.
+   Flag when the exact |variance| is beyond the item's tolerance (3% by default, strictly). Oil +5% and yield
+   −6% are flagged; pouches at exactly −3.00% are not (A2).
+3. **Why aren't the 6 damaged pouches a separate movement?** They left the store inside the 194 issued: one
+   physical movement. Recording damage as information avoids counting it twice (pouches closing = 500 − 194 = 306).
+4. **Why not store actual consumption on the run?** It already lives in the ledger as ISSUE movements. Reading it
+   from there means the production report and the stock ledger can never disagree.
+5. **What if a start fails halfway, e.g. oil issued but flour short?** It is one transaction: the run, its lines,
+   the oil issue and the audit row all roll back. The API answers 409 `INSUFFICIENT_STOCK` naming FLOUR and the
+   shortage, and a test proves no run or movement row was left behind.
+
+Bonus: **Why is ₹31.14 proven in a P4 test while the benchmark's B13 still waits?** In PROBLEM §5 the overheads
+are step 8, after the orders and the payment, so the scenario can only reach it once P5 and P6 exist.
+
+### Practice change (do it alone)
+Add **Murukku 500 g** sharing the same ingredient lines: create a `POUCH-500G` packaging item and the
+`MURUKKU-500G` product (`POST /items`), then its BOM (`POST /boms`) with the same flour, oil and spice lines but
+its own pouch and, say, 80 packets per batch. Buy some pouches (`POST /purchases`), run one batch, and check
+`/variance` and `/cost`.
+
+### P4 hardening (what the hostile audit found)
+The `ledger-auditor` subagent wrote 56 tests and found 9 real defects before P4 merged. Worth being able
+to recount one or two:
+- **Backdated issue (critical):** a run dated 2 Nov could consume flour received on 20 Nov, showing −4 kg on
+  2 Nov, and `reconcile()` (which looks at *current* totals) stayed green. Fix: `post_movements` reads the
+  balance **as of the movement date**, so stock can't be drawn before it arrived.
+- **Posted documents were editable/deletable.** Only the ledger had the append-only trigger, so `UPDATE
+  production_run SET good_qty` quietly changed cost per packet. Fix: DB triggers freeze the documents too (a
+  run is immutable once COMPLETED), so the report can't diverge from the ledger it's supposed to summarise.
+- **Lock-order deadlock:** two concurrent runs each inserted rows (a weak FOR KEY SHARE lock) before asking
+  for FOR UPDATE, so Postgres killed one with a 500. Fix: lock the items first; the loser now waits and gets
+  a clean 409.
+The lesson for the interview: an invariant you only check against *current* state (reconcile) misses history;
+the strongest guarantees are the ones the database enforces (triggers, as-of queries), not the service layer.

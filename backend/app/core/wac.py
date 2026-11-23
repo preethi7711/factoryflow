@@ -15,10 +15,12 @@ from app.core.money import round_half_up
 
 
 class InsufficientStockError(ValueError):
-    def __init__(self, requested: Decimal, available: Decimal) -> None:
-        super().__init__(f"requested {requested}, only {available} available")
+    def __init__(self, requested: Decimal, available: Decimal, item: str | None = None) -> None:
+        prefix = f"{item}: " if item else ""
+        super().__init__(f"{prefix}requested {requested}, only {available} available")
         self.requested = requested
         self.available = available
+        self.item = item  # item code, when the caller knows it
 
 
 def receipt_value(qty: Decimal, rate_paise: int) -> int:

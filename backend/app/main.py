@@ -11,6 +11,8 @@ from app.core.health import router as health_router
 from app.core.spa import SPAStaticFiles
 from app.inventory.router import router as stock_router
 from app.masters.router import router as masters_router
+from app.production.router import router as production_router
+from app.purchasing.router import router as purchasing_router
 
 API_PREFIX = "/api/v1"
 
@@ -26,7 +28,15 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     install_error_handlers(app)
-    for router in (health_router, auth_router, masters_router, stock_router):
+    routers = (
+        health_router,
+        auth_router,
+        masters_router,
+        stock_router,
+        purchasing_router,
+        production_router,
+    )
+    for router in routers:
         app.include_router(router, prefix=API_PREFIX)
     # Mounted last, so every /api route above wins over the static files.
     if settings.static_dir:

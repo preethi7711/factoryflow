@@ -9,10 +9,11 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.audit import service as audit
+from app.core.money import round_half_up
 from app.core.units import check_qty_scale
 from app.core.wac import InsufficientStockError, issue_value
 from app.inventory.models import (
@@ -27,6 +28,10 @@ from app.masters import service as masters
 
 INFLOWS = frozenset({MovementType.OPENING, MovementType.PURCHASE, MovementType.OUTPUT})
 OUTFLOWS = frozenset({MovementType.ISSUE, MovementType.SCRAP, MovementType.DISPATCH})
+# Source documents whose table we can check for existence today (others arrive in P5).
+KNOWN_SOURCE_TABLES = frozenset(
+    {SourceType.STOCK_ADJUSTMENT, SourceType.PURCHASE, SourceType.PRODUCTION_RUN}
+)
 
 
 @dataclass(frozen=True)
@@ -71,8 +76,52 @@ def balance(
     return Decimal(qty), int(value)
 
 
-def lot_balances(db: Session, item_id: int) -> list[tuple[int, Decimal]]:
-    """Lots of an item that still hold stock, oldest received first."""
+def source_value(
+    db: Session,
+    source_type: SourceType,
+    source_id: int,
+    movement_type: MovementType | None = None,
+) -> int:
+    """SUM(value_paise) of one document's movements, e.g. a run's ISSUEs (a negative number)."""
+    q = select(func.coalesce(func.sum(StockMovement.value_paise), 0)).where(
+        StockMovement.source_type == SourceType(source_type).value,
+        StockMovement.source_id == source_id,
+    )
+    if movement_type is not None:
+        q = q.where(StockMovement.movement_type == MovementType(movement_type).value)
+    return int(db.scalar(q))
+
+
+def source_qty_by_line(
+    db: Session, source_type: SourceType, source_id: int, movement_type: MovementType
+) -> dict[int, Decimal]:
+    """SUM(qty) per source line of one document, e.g. how much each run line really issued.
+
+    Documents read their actual quantities from here instead of storing a second copy.
+    """
+    q = (
+        select(StockMovement.source_line_id, func.sum(StockMovement.qty))
+        .where(
+            StockMovement.source_type == SourceType(source_type).value,
+            StockMovement.source_id == source_id,
+            StockMovement.movement_type == MovementType(movement_type).value,
+        )
+        .group_by(StockMovement.source_line_id)
+    )
+    return {line_id: Decimal(qty) for line_id, qty in db.execute(q)}
+
+
+def get_lot(db: Session, lot_id: int) -> StockLot:
+    lot = db.get(StockLot, lot_id)
+    if lot is None:
+        raise ValueError(f"lot {lot_id} does not exist")
+    return lot
+
+
+def lot_balances(
+    db: Session, item_id: int, *, as_of: date | None = None
+) -> list[tuple[int, Decimal]]:
+    """Lots of an item that still hold stock as of a date, oldest received first."""
     held = func.sum(StockMovement.qty)
     q = (
         select(StockLot.id, held)
@@ -82,17 +131,22 @@ def lot_balances(db: Session, item_id: int) -> list[tuple[int, Decimal]]:
         .having(held > 0)
         .order_by(StockLot.received_at, StockLot.id)
     )
+    if as_of is not None:
+        q = q.where(StockMovement.movement_date <= as_of)
     return [(lot_id, Decimal(qty)) for lot_id, qty in db.execute(q)]
 
 
-def allocate(db: Session, item_id: int, qty: Decimal) -> list[tuple[int, Decimal]]:
+def allocate(
+    db: Session, item_id: int, qty: Decimal, *, as_of: date | None = None
+) -> list[tuple[int, Decimal]]:
     """Which lots an outflow of qty comes from: FIFO, oldest received first.
 
+    `as_of` keeps a backdated issue from drawing a lot that had not arrived yet.
     FEFO (stretch goal) = order lot_balances by expiry_date instead; nothing else changes.
     """
     parts: list[tuple[int, Decimal]] = []
     remaining = qty
-    for lot_id, held in lot_balances(db, item_id):
+    for lot_id, held in lot_balances(db, item_id, as_of=as_of):
         take = min(held, remaining)
         parts.append((lot_id, take))
         remaining -= take
@@ -173,6 +227,9 @@ def _check(line: MovementLine) -> None:
             raise ValueError(f"{t} must name its lot and its value")
         if line.qty > 0 and line.value_paise < 0:
             raise ValueError("an inflow can't have a negative value")
+        # COST_ADJUST only ever adds cost (overheads). A negative one could drive value below zero.
+        if t is MovementType.COST_ADJUST and line.value_paise <= 0:
+            raise ValueError("COST_ADJUST must add a positive value")
     elif line.value_paise is not None:
         raise ValueError("outflows are valued at weighted average cost; don't pass value_paise")
 
@@ -181,6 +238,18 @@ def _lot_of_item(db: Session, lot_id: int, item_id: int) -> None:
     lot = db.get(StockLot, lot_id)
     if lot is None or lot.item_id != item_id:
         raise ValueError(f"lot {lot_id} does not belong to item {item_id}")
+
+
+def _require_source_exists(db: Session, source_type: SourceType, source_id: int) -> None:
+    """Every movement must trace to a real document (invariant 6). Callers create and flush the
+    document before posting, so this catches a programming error, never normal use."""
+    st = SourceType(source_type)
+    if st not in KNOWN_SOURCE_TABLES:
+        return
+    # st.value is an enum-controlled table name, so this interpolation is safe.
+    exists = db.execute(text(f"SELECT 1 FROM {st.value} WHERE id = :id"), {"id": source_id}).first()
+    if exists is None:
+        raise ValueError(f"source document {st.value} #{source_id} does not exist")
 
 
 def post_movements(
@@ -202,7 +271,8 @@ def post_movements(
         raise ValueError("nothing to post")
     for line in lines:
         _check(line)
-    masters.lock_items(db, (line.item_id for line in lines))
+    _require_source_exists(db, source_type, source_id)
+    items = masters.lock_items(db, (line.item_id for line in lines))
 
     posted: list[StockMovement] = []
 
@@ -226,14 +296,33 @@ def post_movements(
     for line in lines:
         if line.qty < 0:
             wanted = -line.qty
-            parts = [(line.lot_id, wanted)] if line.lot_id else allocate(db, line.item_id, wanted)
-            for lot_id, part in parts:
-                _lot_of_item(db, lot_id, line.item_id)
-                in_lot, _ = balance(db, line.item_id, lot_id=lot_id)
-                if part > in_lot:
-                    raise InsufficientStockError(part, in_lot)
-                on_hand, on_hand_value = balance(db, line.item_id)
-                insert(line, lot_id, -part, -issue_value(part, on_hand, on_hand_value))
+            try:
+                # One rounding point per issue line (architecture section 5): value the whole
+                # line once at the weighted-average cost as of the movement date, then split that
+                # value across FIFO lots with the remainder on the last lot. Reading balances
+                # as of the date stops a backdated issue from drawing stock that had not arrived.
+                on_hand, on_hand_value = balance(db, line.item_id, as_of=movement_date)
+                total_value = issue_value(wanted, on_hand, on_hand_value)
+                if line.lot_id:
+                    parts = [(line.lot_id, wanted)]
+                else:
+                    parts = allocate(db, line.item_id, wanted, as_of=movement_date)
+                allocated = 0
+                last = len(parts) - 1
+                for i, (lot_id, part) in enumerate(parts):
+                    _lot_of_item(db, lot_id, line.item_id)
+                    in_lot, _ = balance(db, line.item_id, lot_id=lot_id, as_of=movement_date)
+                    if part > in_lot:
+                        raise InsufficientStockError(part, in_lot)
+                    if i == last:
+                        value = total_value - allocated  # remainder, so the parts sum exactly
+                    else:
+                        value = round_half_up(Decimal(total_value) * part / wanted)
+                    allocated += value
+                    insert(line, lot_id, -part, -value)
+            except InsufficientStockError as exc:  # say which item is short
+                code = items[line.item_id].code
+                raise InsufficientStockError(exc.requested, exc.available, item=code) from None
         else:
             assert line.lot_id is not None and line.value_paise is not None  # checked in _check
             _lot_of_item(db, line.lot_id, line.item_id)

@@ -2,11 +2,11 @@
 
 _Last updated: 2026-11-23_
 
-## Current phase: P3 done. Next: **P4 purchase + production run**
+## Current phase: P4 done (ledger-audited). Next: **P5 orders, invoice, dispatch**
 
 **Live:** https://factoryflow-icdx.onrender.com (Render Free, Singapore, auto-deploys from `main`; Neon Free DB).
-Verified 2026-11-23 (P2): `/api/v1/health` → `{"status":"ok","db":"ok"}`, `/` serves the placeholder page.
-First deploy failed because Render's **Root Directory** was `docker/` (it must be empty); fixed in the dashboard.
+Verified 2026-11-23 (P3): `/api/v1/health` → `{"status":"ok","db":"ok"}`, `/` serves the placeholder page,
+P3 migration applied on Neon. First deploy failed because Render's **Root Directory** was `docker/`; fixed.
 
 | Phase | Goal | Status |
 |---|---|---|
@@ -15,7 +15,8 @@ First deploy failed because Render's **Root Directory** was `docker/` (it must b
 | P1b | Early deploy (Render + Neon) | ✅ done |
 | P2 | Core maths: money, units, gst, wac, variance (pure, unit-tested) | ✅ done |
 | P3 | Auth/RBAC, masters, append-only ledger, audit, seed | ✅ done |
-| P4–P6 | Production → sales/invoice → payments (benchmark gate) | ⚪ P4 next |
+| P4 | Purchases + production runs, variance, overheads, cost; ledger-audited | ✅ done |
+| P5–P6 | Sales/invoice → payments (benchmark gate) | ⚪ P5 next |
 | P7–P9 | PDF + reports → frontend + offline queue → README/design note/deploy | ⚪ |
 | P10–P11 | Should-haves → stretch | ⚪ |
 
@@ -43,19 +44,27 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 - P3: the token carries only the user id; role and active flag are re-read from the DB on every request.
 - P3: opening stock is a `stock_adjustment` document (kind OPENING), dated 31 Oct 2026 (A17).
 - P3: production refuses to start with a weak `JWT_SECRET_KEY` (< 32 chars or the dev default).
+- P4: actual consumption/output are **read from the ledger** (ISSUE/OUTPUT movements), never stored twice,
+  so `/variance` and `/cost` can't diverge from stock. Overheads are value-only COST_ADJUST on the FG lot.
+- P4 (after the ledger-auditor): posted documents are append-only at the DB (`purchase`/`run`/lot/adjustment/
+  overhead can't be deleted; a run is frozen once COMPLETED). `post_movements()` reads balances as of the
+  movement date (no backdated overdraw), refuses an unknown source document, rounds once per issue line, and
+  locks items before inserting referencing rows (concurrent posts → 409, not a deadlock). pcs/pkt are whole;
+  BOMs are admin-only. 56-test audit suite in `tests/audit/` is the regression guard.
 
 ## Open issues
 - Hours/day unconfirmed (assumed ~6, H1).
-- Render: after pushing P3, confirm the deploy is live. If it fails with "JWT_SECRET_KEY must be a random value
-  of 32+ characters", set a new key in the Render dashboard (`python -c "import secrets; print(secrets.token_urlsafe(48))"`).
+- After pushing P4, confirm the Render deploy is live and the two new migrations applied on Neon.
 - Render: Health Check Path is still empty; set it to `/api/v1/health` in the dashboard (optional, recommended).
 - Live DB: migrations run on every deploy, but Neon is **not seeded**, so the live site has no logins yet.
   Decide by P8: run `python -m app.seed` against Neon from a local shell, or seed at startup behind an env flag.
-- **B13 vs roadmap P4 "done when":** `test_b13` calls `sc.require(8)`, and step 8 (overheads) comes after
-  orders (P5) and payment (P6), so the benchmark B13 can't pass in P4. Proposed: P4 proves ₹31.14 with its own
-  integration test (purchase → run → overheads → cost), and the benchmark B13 turns green in P6. Confirm.
-- Not built yet: REVERSAL movements (credit notes, P5); a concurrency test for "no negative stock" (ask the
-  ledger-auditor after P4); edit/deactivate endpoints for masters (create only so far).
+- **B13 benchmark check stays xfail until P6:** it calls `sc.require(8)` (overheads), which comes after orders
+  (P5) and payment (P6). ₹31.14 is already proven by `tests/integration/test_production.py::test_b13_*`.
+  Remove the B13 xfail marker in the commit that makes scenario step 8 reachable (P6).
+- WIP gap (no test): materials issued to a run that never completes have left stock and show in no report
+  (no work-in-progress account, no run reversal yet). Revisit with reversals in P5.
+- Not built yet: REVERSAL movements and credit notes (P5); order idempotency (P5/P8); edit/deactivate
+  endpoints for masters (create only so far).
 - Every push to `main` redeploys Render (about 1 min), including docs-only pushes.
 - `gh` CLI not installed; pushes use plain git.
 - Two Dockerfiles on purpose: root `Dockerfile` = production (Render); `backend/Dockerfile` = dev (compose,
@@ -64,35 +73,39 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 
 ## Benchmark scoreboard
 
-`pytest -q`: 126 passed, 17 xfailed (2026-11-23). The scenario now completes step 0 (seed, logins, lookups)
-and stops at step 1 (`POST /purchases`, P4). The arithmetic of B8–B10, B12b, B13 and A5 is proven by unit tests.
+`pytest -q`: 215 passed, 8 xfailed (2026-11-23). That is 159 (P1–P3) + 56 ledger-audit tests. The scenario
+now runs through step 3 (purchase, run, output) and stops at step 4 (`POST /orders`, P5).
 
 | Check | Status |
 |---|---|
-| Ledger reconciles after every step | ✅ pass |
-| No orphan movements after any step | ✅ pass |
-| B1–B13, B9b, B10b, B12b | ⏳ xfail |
+| Ledger reconciles / no orphans after every step | ✅ pass |
+| B1–B6 (closing balances, FG after run) | ✅ pass |
+| B8, B9, B9b (yield and consumption variance) | ✅ pass |
+| B13 cost per packet ₹31.14 | ✅ proven in `test_production.py`; benchmark check xfail until P6 |
+| B7, B10, B10b, B11, B12, B12b | ⏳ xfail (orders/invoice/payment: P5, P6) |
 | Salesman 403 on approve | ⏳ xfail (needs orders, P5) |
+| ledger-auditor P4 | ✅ books trustworthy (56/56 green) |
 
 ## Next prompt (paste this to start the next session)
 
 ```
 Read CLAUDE.md and docs/project_status.md, then continue.
-Start phase P4 on branch feat/p4-production, exactly as defined in docs/roadmap.md (~1.5 h; warn me if it
-may not fit; commit per module). Follow the stock-ledger skill; post stock only via post_movements().
-- purchasing: purchase + purchase_line (supplier, date, item, qty in any unit of its dimension,
-  rate_paise per that unit, tax-exclusive, input GST recorded but not costed: A15). Each line creates a lot
-  and posts PURCHASE at receipt_value. POST /purchases (role production), as test_section5.py step 1 sends it.
-- production: production_run (BOM, batches, run_date, DRAFT -> COMPLETED) + run_consumption (planned vs
-  actual per BOM line) + run_overhead. POST /production-runs issues the raw materials (step 2);
-  POST /production-runs/{id}/complete issues packaging (pouches 194 incl. 6 damaged, recorded as damaged_qty),
-  creates FG lot RUN-0001 (expiry = run date + shelf life, A16) and posts OUTPUT +188 at material cost
-  (step 3); GET .../variance (B8, B9, B9b; A1–A4); POST .../overheads posts COST_ADJUST on the run's FG lot
-  (A14) and GET .../cost returns material, overhead, total, good_qty, cost_per_unit_paise (step 8 shapes).
-  Audit-log run creation, completion and overheads. Roles: production (admin may read).
-Remove the xfail markers of B1–B6, B8, B9, B9b in the same commit as the code that makes them pass.
-B13 needs scenario step 8 (after P5/P6): prove Rs 31.14 with P4's own integration test and leave the
-benchmark B13 xfail (see Open issues). Then run the ledger-auditor subagent and fix what it confirms.
+Start phase P5 on branch feat/p5-sales, exactly as defined in docs/roadmap.md (~1.5 h; warn me if it may not
+fit; commit per module). Follow the stock-ledger and gst-rules skills; post stock only via post_movements().
+Match the request/response shapes in tests/benchmark/test_section5.py steps 4-6 (don't change expected numbers).
+- sales: sales_order (+ order_line), client_uuid UNIQUE, idempotent create via the Idempotency-Key header
+  (same key + same body -> replay stored response; same key + different body -> 409). Server re-prices from
+  the price list. POST /orders (salesman; a salesman sees/creates only their own customers' orders, 403 on
+  others). Approval with a stock-cover check: available = FG on hand - approved-but-undispatched; over-approval
+  -> 409 INSUFFICIENT_STOCK with requested/available/shortage (B12: shortage 32). POST /orders/{id}/approve
+  (admin; salesman 403 -> turns the benchmark salesman-403 check green). GET /orders/{id}/tax-preview (B12b:
+  INTER, IGST 300, total 6300).
+- billing: invoice from an approved order, FY numbering FF/2026-27/0001 gapless via a row-locked sequence,
+  per-line CGST+SGST or IGST by place of supply (B10: 7500 + 187.5 + 187.5 = 7875; B10b number). Dispatch
+  posts DISPATCH movements (B7: FG 238 -> 88). POST /orders/{id}/invoice, POST /invoices/{id}/dispatch (admin).
+Remove the xfail markers of B7, B10, B10b, B12, B12b and salesman-403 in the commit that makes them pass.
+Then run the ledger-auditor subagent (attacks 4, 8, 9 are now in scope: idempotency replay, reversal
+symmetry, invoice numbering) and fix what it confirms. B11 and the full green come in P6 (payments).
 Finish with tests and lint green, /update-docs-and-commit, merge to main, the teaching protocol, and an
-updated next prompt for P5.
+updated next prompt for P6.
 ```

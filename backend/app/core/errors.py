@@ -58,6 +58,7 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(InsufficientStockError)
     async def _insufficient(_: Request, exc: InsufficientStockError) -> JSONResponse:
         details = {
+            "item": exc.item,
             "requested": str(exc.requested),
             "available": str(exc.available),
             "shortage": str(exc.requested - exc.available),

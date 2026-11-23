@@ -1,0 +1,14 @@
+# Build context for the root (production) Dockerfile. Keep secrets and local junk out.
+.env
+.env.*
+!.env.example
+.git/
+.github/
+.claude/
+docs/
+**/node_modules/
+**/dist/
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/

@@ -111,6 +111,8 @@ docs/                    # spec, architecture, status, changelog, PROBLEM
 | Test (all) | `docker compose run --rm api pytest` |
 | Benchmark only | `docker compose run --rm api pytest -m benchmark -v -rxX` |
 | Lint backend | `docker compose run --rm api sh -c "ruff check . && ruff format --check ."` |
+| Production image (what Render builds) | `docker build -t factoryflow .` (root `Dockerfile`; listens on `$PORT`) |
+| Frontend dev / build | `cd frontend && npm install && npm run dev` / `npm run build` |
 | Host venv (for the ruff hook) | `cd backend && py -3.12 -m venv .venv && .venv/Scripts/pip install -r requirements-dev.txt` |
 | Lint frontend | `cd frontend && npm run lint` *(planned, P8)* |
 

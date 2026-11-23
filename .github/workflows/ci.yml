@@ -46,3 +46,10 @@ jobs:
           ruff format --check .
       - name: Tests (benchmark checks show as xfail until built)
         run: pytest -v
+
+  image:
+    # The same build Render runs, so a broken Dockerfile fails here before it reaches the host.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t factoryflow .

@@ -2,13 +2,17 @@
 
 _Last updated: 2026-11-23_
 
-## Current phase: P1 done. Next: **P1b early deploy**
+## Current phase: P1b in progress (image ready; Render + Neon setup by the user)
+
+P1b code is on `main`: root `Dockerfile` builds and was tested locally with `PORT=10000` and a plain
+`postgresql://` URL (health 200, page 200). Remaining: the user creates the Neon DB and the Render web
+service (Dockerfile Path `./Dockerfile`, env `DATABASE_URL`, `JWT_SECRET_KEY`), then we check the live URL.
 
 | Phase | Goal | Status |
 |---|---|---|
 | 0 | Repo, docs, conventions, plan, skills, auditor agent | ✅ done |
 | P1 | Skeleton + CI + hooks + benchmark test (all xfail) | ✅ done |
-| P1b | Early deploy (Render + Neon) | ⚪ next |
+| P1b | Early deploy (Render + Neon) | 🟡 image done, hosting pending |
 | P2–P6 | Core maths → ledger → production → sales/invoice → payments (benchmark gate) | ⚪ |
 | P7–P9 | PDF + reports → frontend + offline queue → README/design note/deploy | ⚪ |
 | P10–P11 | Should-haves → stretch | ⚪ |
@@ -31,14 +35,13 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 - Hours/day unconfirmed (assumed ~6, H1).
 - Render signup: confirm no card is asked (P1b). If one is, fall back to local compose + video.
 - `gh` CLI not installed; pushes use plain git.
-- Docker Desktop crashed during P1 and then gave "unable to get image … unexpected end of JSON input".
-  The suite ran green in Docker before that. Not re-verified after the crash: the live
-  `curl localhost:$API_PORT/api/v1/health` and the first GitHub Actions run (CI runs on push).
+- Two Dockerfiles on purpose: root `Dockerfile` = production (Render); `backend/Dockerfile` = dev (compose,
+  includes pytest/ruff, live reload).
 - Local `backend/.venv` exists only so the ruff hook works on the host (git-ignored).
 
 ## Benchmark scoreboard
 
-`pytest -q`: 3 passed, 19 xfailed (2026-11-23). Every check currently stops at step 0 (`app.seed` not built).
+`pytest -q`: 9 passed, 19 xfailed (2026-11-23). Every check currently stops at step 0 (`app.seed` not built).
 
 | Check | Status |
 |---|---|
@@ -49,14 +52,10 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 
 ```
 Read CLAUDE.md and docs/project_status.md, then continue.
-First confirm Docker Desktop is healthy: `docker compose up -d` then
-`curl localhost:8000/api/v1/health` (use API_PORT=8001 if 8000 is busy) and
-`docker compose run --rm api pytest -q` (expect 3 passed, 19 xfailed).
-Then start phase P1b on branch feat/p1b-deploy, exactly as defined in docs/roadmap.md:
-multi-stage Dockerfile (build a placeholder React/Vite page, FastAPI serves dist/ at / and the API at
-/api/v1), Render Free web service auto-deploying from main, Neon Free Postgres. I (the user) create the
-Render and Neon accounts myself and confirm no credit card is asked; if one is, stop and fall back to local
-compose + demo video. DATABASE_URL and JWT_SECRET_KEY go in the Render dashboard, never in the repo.
-No keep-alive pings. Done when the live URL shows /api/v1/health OK and the placeholder page.
-Finish with /update-docs-and-commit, merge to main, the teaching protocol, and an updated next prompt for P2.
+Finish phase P1b. The production Dockerfile is already on main. I (the user) have created the Neon DB and
+the Render web service (Dockerfile Path ./Dockerfile, env DATABASE_URL and JWT_SECRET_KEY set in the
+dashboard). My live URL is: <paste it>. Check that <url>/api/v1/health returns {"status":"ok","db":"ok"}
+and <url>/ shows the placeholder page; if not, read the Render deploy log I paste and fix it.
+No keep-alive pings. Then /update-docs-and-commit, the teaching protocol for P1b, and an updated next
+prompt for P2 (core maths: money, units, gst, wac, variance; pure and unit-tested).
 ```

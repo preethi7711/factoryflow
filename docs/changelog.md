@@ -12,6 +12,11 @@ Each milestone adds a section. Commit hashes are in `git log`.
 - FastAPI serves the built app (`STATIC_DIR`) with an index.html fallback for client routes; `/api` stays JSON 404.
 - `DATABASE_URL` from hosts (`postgres://`, `postgresql://`) is rewritten to the psycopg 3 driver.
 - CI job that builds the production image.
+- Deployed: https://factoryflow-icdx.onrender.com (Render Free + Neon Free), health and page verified live.
+
+### Fixed
+- First Render deploy failed (`open Dockerfile: no such file or directory`): the service's Root Directory
+  was `docker/`. Cleared it in the Render dashboard; no code change.
 
 ## P1 skeleton
 

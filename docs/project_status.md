@@ -2,17 +2,17 @@
 
 _Last updated: 2026-11-23_
 
-## Current phase: P1b in progress (image ready; Render + Neon setup by the user)
+## Current phase: P1b done. Next: **P2 core maths**
 
-P1b code is on `main`: root `Dockerfile` builds and was tested locally with `PORT=10000` and a plain
-`postgresql://` URL (health 200, page 200). Remaining: the user creates the Neon DB and the Render web
-service (Dockerfile Path `./Dockerfile`, env `DATABASE_URL`, `JWT_SECRET_KEY`), then we check the live URL.
+**Live:** https://factoryflow-icdx.onrender.com (Render Free, Singapore, auto-deploys from `main`; Neon Free DB).
+Verified 2026-11-23: `/api/v1/health` → `{"status":"ok","db":"ok"}`, `/` serves the placeholder page.
+First deploy failed because Render's **Root Directory** was `docker/` (it must be empty); fixed in the dashboard.
 
 | Phase | Goal | Status |
 |---|---|---|
 | 0 | Repo, docs, conventions, plan, skills, auditor agent | ✅ done |
 | P1 | Skeleton + CI + hooks + benchmark test (all xfail) | ✅ done |
-| P1b | Early deploy (Render + Neon) | 🟡 image done, hosting pending |
+| P1b | Early deploy (Render + Neon) | ✅ done |
 | P2–P6 | Core maths → ledger → production → sales/invoice → payments (benchmark gate) | ⚪ |
 | P7–P9 | PDF + reports → frontend + offline queue → README/design note/deploy | ⚪ |
 | P10–P11 | Should-haves → stretch | ⚪ |
@@ -33,7 +33,8 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 
 ## Open issues
 - Hours/day unconfirmed (assumed ~6, H1).
-- Render signup: confirm no card is asked (P1b). If one is, fall back to local compose + video.
+- Render: Health Check Path is still empty; set it to `/api/v1/health` in the dashboard (optional, recommended).
+- Every push to `main` redeploys Render (about 1 min), including docs-only pushes.
 - `gh` CLI not installed; pushes use plain git.
 - Two Dockerfiles on purpose: root `Dockerfile` = production (Render); `backend/Dockerfile` = dev (compose,
   includes pytest/ruff, live reload).
@@ -52,10 +53,11 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 
 ```
 Read CLAUDE.md and docs/project_status.md, then continue.
-Finish phase P1b. The production Dockerfile is already on main. I (the user) have created the Neon DB and
-the Render web service (Dockerfile Path ./Dockerfile, env DATABASE_URL and JWT_SECRET_KEY set in the
-dashboard). My live URL is: <paste it>. Check that <url>/api/v1/health returns {"status":"ok","db":"ok"}
-and <url>/ shows the placeholder page; if not, read the Render deploy log I paste and fix it.
-No keep-alive pings. Then /update-docs-and-commit, the teaching protocol for P1b, and an updated next
-prompt for P2 (core maths: money, units, gst, wac, variance; pure and unit-tested).
+Start phase P2 on branch feat/p2-core-maths, exactly as defined in docs/roadmap.md:
+pure modules in backend/app/core/ — money (integer paise, half-up rounding), units (to_base with Decimal,
+kg/g, l/ml, pcs, pkt; cross-dimension = error), gst (CGST+SGST vs IGST by state, per-line half-up),
+wac (moving weighted average, anti-drift on emptying issue), variance (bp, flag when |var| > tol strictly).
+No DB, no HTTP. Unit tests in backend/tests/unit/ covering the spec §4 numbers (B8, B9, B9b, B10, B12b
+taxes, B13 arithmetic). Benchmark checks stay xfail (they need the API). Finish with tests and lint green,
+/update-docs-and-commit, merge to main, the teaching protocol, and an updated next prompt for P3.
 ```

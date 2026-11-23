@@ -6,6 +6,28 @@ Each milestone adds a section. Commit hashes are in `git log`.
 ## [Unreleased]
 
 ### Added
+- P4 `purchasing`: `POST /purchases`, `GET /purchases/{id}`. One lot per line, stock in base units at the
+  quoted-unit value, input GST (CGST+SGST or IGST by supplier state) recorded but not costed (A15).
+- P4 `production`: `POST /production-runs` (start + raw issues), `POST /{id}/complete` (packaging issues,
+  damaged info, FG lot with expiry, OUTPUT at material cost), `POST /{id}/overheads` (COST_ADJUST),
+  `GET /{id}`, `/variance` (B8, B9, B9b, A4) and `/cost` (B13: ₹31.14). Actual consumption is read from the
+  ledger. Every step is audit-logged; a run can't be completed twice.
+- Benchmark: B1–B6, B8, B9, B9b pass. B13 is proven by `tests/integration/test_production.py`.
+- `core/clock.py` (IST business time); stock errors name the short item; assumption A18 (overhead date).
+- `ledger-auditor` P4 hostile audit suite in `tests/audit/` (56 tests: 47 guards + 9 findings).
+
+### Fixed
+- P4 ledger-audit findings (all 9, tests now green): backdated issues can no longer overdraw stock
+  on the movement date (balances read as of `movement_date`); `post_movements()` refuses an unknown
+  source document and the orphan invariant actually checks existence; posted documents are append-only
+  at the DB (a completed run or a purchase can't be edited or deleted, so `/cost` and `/variance` can't
+  diverge from the ledger); concurrent posts lock items before inserting, so one gets 409 instead of a
+  deadlock 500; one rounding point per issue line; whole-number pcs/pkt; `COST_ADJUST` must add value;
+  BOMs are admin-only (segregation of duties).
+
+## P3 auth, masters, ledger, audit, seed
+
+### Added
 - P3 `auth`: `app_user` with 5 roles, bcrypt passwords, JWT login (`POST /auth/login`, `GET /auth/me`),
   `require_roles()` deny-by-default, a test that fails if any route forgets it, and a role matrix test.
 - P3 `masters`: items (+ pack units), BOMs stored in base units (one active per product), customers and

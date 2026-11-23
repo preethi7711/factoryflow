@@ -120,14 +120,13 @@ Other key fields:
   - Issue value = `round_half_up(qty × Σvalue / Σqty)`.
   - **Anti-drift:** an issue that empties an item takes all of the remaining value.
   - Lots exist for traceability only; cost is WAC per item.
-- **Production post (one txn):**
-  1. Lock the items and check stock.
-  2. Post ISSUE movements for the actual quantities (pouches 194 = 188 good + 6 damaged).
-  3. Create the FG lot `RUN-0001` with expiry = run date + shelf life.
-  4. Post OUTPUT +188, valued at material cost.
-  5. Audit.
-- **Overheads added later** post a `COST_ADJUST` movement (qty 0, value > 0) on the run's FG lot. Append-only, and FG value stays right. Refused when the item has no stock left, because the value would sit on zero quantity.
-- **Cost per packet** = (materials + run overheads) / good output.
+- **Purchase (one txn):** one lot per line (`PUR-nnnn-k`, received at the purchase date, IST midnight, so FIFO follows business dates). PURCHASE is valued at `receipt_value(entered qty, rate per entered unit)`; input GST is stored on the line but never added to stock value (A15).
+- **Production run** (two calls, each one txn with its audit row; the run row is locked `FOR UPDATE`):
+  1. **Start** (`POST /production-runs`): planned lines = BOM × batches; ISSUE the raw materials issued now.
+  2. **Complete** (`POST /production-runs/{id}/complete`): ISSUE the rest (packaging: pouches 194 = 188 good + 6 damaged), record `damaged_qty` for information only, create the FG lot `RUN-0001` (expiry = run date + shelf life), post OUTPUT +188 valued at the sum of the run's ISSUE values (material cost). A second complete gets 409.
+  - **Actual consumption is never stored on the run.** It is `-SUM(qty)` of the run's ISSUE movements per line, so the run and the ledger can't disagree. `source_line_id` for a run: ISSUE → `run_consumption.id`, OUTPUT → `production_run.id`, COST_ADJUST → `run_overhead.id`.
+- **Overheads added later** post a `COST_ADJUST` movement (qty 0, value > 0) per overhead line on the run's FG lot, dated on the run date (A18). Append-only, and FG value stays right. Refused when the item has no stock left, because the value would sit on zero quantity.
+- **Cost per packet** = (materials issued + run overheads) / good output, half-up to the paisa.
 - **Variance:**
   - Planned = BOM qty × batches. `var_bp = (actual − planned) × 10000 / planned`, half-up, for display.
   - Flag when `|actual − planned| × 10000 > tol_bp × planned`: the exact value, not the rounded bp, so 3.004%

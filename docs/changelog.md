@@ -6,6 +6,33 @@ Each milestone adds a section. Commit hashes are in `git log`.
 ## [Unreleased]
 
 ### Added
+- P5 `sales`: `POST /orders` (salesman/admin), each line priced by the server from the price list;
+  idempotent via the `Idempotency-Key` header (stored as `sales_order.client_uuid` UNIQUE plus an
+  `idempotency_key` table — same key + same body replays, different body → 409). `GET /orders` and
+  `GET /orders/{id}` (a salesman sees only their own customers' orders). `POST /orders/{id}/approve`
+  (admin; salesman → 403) with a stock-cover check → 409 `INSUFFICIENT_STOCK` carrying
+  requested/available/shortage (B12). `GET /orders/{id}/tax-preview` (B12b).
+- P5 `billing`: `POST /orders/{id}/invoice` (gapless FY number `FF/2026-27/0001` via a row-locked
+  `invoice_sequence`; per-line CGST+SGST or IGST by place of supply — B10, B10b), `GET /invoices/{id}`,
+  `POST /invoices/{id}/dispatch` (DISPATCH movements; B7: FG 238→88), `POST /invoices/{id}/cancel`
+  (credit note + REVERSAL movements that mirror the dispatch exactly; invoice number stays used, A12).
+- `inventory.post_reversals()`: the only writer of REVERSAL movements (same lot, opposite qty and value,
+  linked by `reverses_id`, UNIQUE so a movement is reversed at most once). `KNOWN_SOURCE_TABLES` and the
+  orphan invariant now cover `dispatch` and `credit_note`.
+- Benchmark: B7, B10, B10b, B12, B12b and the salesman-403 check pass; only B11 and B13 stay xfail (P6).
+- `ledger-auditor` P5 hostile audit suite in `tests/audit/` (17 guards: idempotency replay, reversal
+  symmetry, invoice numbering, backdated dispatch, and the standing ledger invariants).
+
+### Fixed
+- P5 ledger-audit findings (all three, tests now green): a backdated, out-of-order dispatch can no longer
+  drive a lot negative — an outflow now checks the current per-lot balance as well as the as-of-date one
+  (a lot has one inflow, so now is its lowest point); an idempotent double-tap's losing caller replays
+  instead of 500-ing (the `IntegrityError`→replay guard wraps the flush, not just the commit); replay is
+  scoped to the user who owns the key (another user presenting it → 403).
+
+## P4 purchases and production runs
+
+### Added
 - P4 `purchasing`: `POST /purchases`, `GET /purchases/{id}`. One lot per line, stock in base units at the
   quoted-unit value, input GST (CGST+SGST or IGST by supplier state) recorded but not costed (A15).
 - P4 `production`: `POST /production-runs` (start + raw issues), `POST /{id}/complete` (packaging issues,

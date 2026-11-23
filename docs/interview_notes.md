@@ -219,3 +219,70 @@ to recount one or two:
   a clean 409.
 The lesson for the interview: an invariant you only check against *current* state (reconcile) misses history;
 the strongest guarantees are the ones the database enforces (triggers, as-of queries), not the service layer.
+
+## P5: Orders, invoice, dispatch and credit notes
+
+### What it is
+- The **sales** side of the order-to-cash loop: a salesman places an order (priced by the server), the admin
+  approves it against a stock-cover check, raises a GST invoice, and dispatches the goods.
+- A posted invoice is never deleted; it is **cancelled with a credit note** whose reversing movements put the
+  stock back exactly. Orders are **idempotent**, so an offline phone that sends the same order twice lands one.
+
+### The 3 files that matter
+1. `backend/app/sales/service.py`: `create_order` (idempotency + server pricing), `approve_order` (stock check),
+   `tax_preview`.
+2. `backend/app/billing/service.py`: `create_invoice` (FY numbering), `dispatch_invoice`, `cancel_invoice`.
+3. `backend/app/inventory/service.py`: `post_movements` (DISPATCH outflow) and the new `post_reversals`
+   (credit-note REVERSAL, the mirror).
+
+### One trace: `POST /api/v1/orders/1/invoice` (step 5 of the benchmark)
+`require_roles(admin)` → lock the order row → still APPROVED? → place of supply = customer state (33 = ours →
+INTRA) → FY from the invoice date (`2026-11-03` → `2026-27`) → `_next_seq`: `INSERT … ON CONFLICT DO NOTHING`
+then `SELECT … FOR UPDATE` the FY row and bump it → number `FF/2026-27/0001` → per line, taxable 150×5000 =
+750000, CGST 2.5% = 18750, SGST 2.5% = 18750 (each rounded on its own) → totals 787500 → order → INVOICED →
+audit row → one commit. Dispatch is a separate call; that is where the 150 packets actually leave stock.
+
+### Five likely questions
+1. **Same-state vs other-state tax?** Place of supply is the customer's state. Same as the company (33, TN) →
+   intra-state → CGST + SGST, half the rate each. Different (29, KA) → inter-state → IGST, the full rate. Never
+   both. Tax is computed and rounded **per line**, then summed, so the printed lines always add to the total.
+2. **Double-tap offline — how do you avoid two orders?** The phone sends a `crypto.randomUUID()` as the
+   `Idempotency-Key`; it becomes the order's UNIQUE `client_uuid` and a row in `idempotency_key` (with the
+   request hash and the stored response). Same key + same body → replay the first order; different body → 409;
+   a concurrent race is caught at the flush by the UNIQUE violation and replays the winner. Replay is scoped to
+   the user who owns the key, so another salesman can't fish out the order with a stolen key.
+3. **How is invoice numbering gapless, even under concurrency or a failure?** A `FOR UPDATE` row per FY in
+   `invoice_sequence`: concurrent invoices serialise on it, and because the bump lives in the invoice's own
+   transaction, a rolled-back invoice un-bumps the number — no gaps, no duplicates.
+4. **What does "approve" reserve, and how is availability computed?** No stock moves at approval. Availability =
+   finished goods on hand − what approved-but-undispatched orders already claimed; over-approval returns 409
+   `INSUFFICIENT_STOCK` with requested/available/shortage. The item row is locked, so the check can't race a
+   dispatch. Stock leaves only on dispatch (a `DISPATCH` movement valued at WAC).
+5. **How does cancelling an invoice keep the books exact?** `cancel` writes a `credit_note` and
+   `post_reversals()` posts one `REVERSAL` per dispatch movement — same lot, **opposite** qty and value, with
+   `reverses_id` pointing at the original (UNIQUE, so a movement is reversed at most once). Mirroring the exact
+   numbers (not recomputing) means stock and the item's WAC return to precisely where they were; the invoice
+   number stays used (A12).
+
+Bonus: **Why is dispatch, not the invoice, the moment stock leaves?** An invoice is a financial document; the
+goods can be billed and shipped at different times. Keeping the `DISPATCH` movement on the dispatch means the
+ledger reflects physical reality, and a cancelled-before-dispatch invoice reverses no stock.
+
+### Practice change (do it alone)
+Make the invoice prefix include a branch code. `gst.invoice_no(fy, seq, prefix)` already takes the prefix from
+`company_settings.invoice_prefix`; add a `branch_code` (e.g. `TRY`) and have billing build numbers like
+`FF-TRY/2026-27/0001`. Add a test that two branches keep **independent** gapless sequences (hint: the sequence
+key would need the branch as well as the FY).
+
+### P5 hardening (what the hostile audit found)
+The `ledger-auditor` confirmed three defects before P5 merged (17-test guard suite in `tests/audit/`):
+- **Backdated out-of-order dispatch (critical):** dispatch dates are admin-supplied, and the outflow check only
+  looked *as of* that date. Two dispatches out of order could drive a lot to −100 on a past date while the
+  current total stayed positive, so `reconcile()` only caught it after the fact. Fix: an outflow now also checks
+  the **current** per-lot balance; a lot has one inflow, so now is its lowest point.
+- **Idempotency double-tap 500 (minor):** the UNIQUE violation fires at the flush, not the commit, so the
+  losing caller escaped the replay handler and got a 500. Fix: wrap the whole create, flush included.
+- **Replay ignored who was asking (minor):** another salesman presenting a stolen key + body was handed the
+  order. Fix: `_replay` checks the key's owner.
+The lesson: as-of and current are *different* invariants — a safe historical ledger needs the running balance
+to stay non-negative at **every** date, not just the latest.

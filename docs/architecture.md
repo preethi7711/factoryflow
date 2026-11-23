@@ -103,7 +103,7 @@ Other key fields:
 | Stock derived from ledger | balances are `SUM()` queries; no writable balance | `test_ledger_reconciles_after_every_step` |
 | Append-only ledger | DB trigger raises on UPDATE/DELETE/TRUNCATE of `stock_movement` and `audit_log` | `test_ledger_and_audit_log_are_append_only` |
 | Traceability | `source_*` NOT NULL; composite lot/item FK; sign CHECK | `test_database_rejects_bad_movements`; ledger invariants after every benchmark step and every integration test (`tests/invariants.py`) |
-| No negative stock | item rows locked `FOR UPDATE`, balance checked in the same txn | concurrency test |
+| No negative stock | item rows locked `FOR UPDATE`; an outflow's balance checked in the same txn, both as of the movement date and currently per lot (a backdated out-of-order outflow can't overdraw) | concurrency + P5 audit test |
 | Exact money and quantities | `int` paise, `Decimal` qty, half-up rounding at named points only | unit tests |
 | Posted docs immutable | state machine; cancel = credit note + REVERSAL movements | billing tests |
 | Audit | `audit.record()` in the same txn as the change | audit tests |
@@ -144,6 +144,8 @@ Other key fields:
   - Over-approval returns `INSUFFICIENT_STOCK` with requested, available, shortage and batches needed.
   - Admin can approve a partial quantity or hold the order.
 - **Lot allocation:** an outflow that names no lot is split across lots by `post_movements()` itself, using `inventory.allocate()` (FIFO by `received_at`, under the item lock). FEFO = change the sort key to `expiry_date` (stretch toggle).
+  - An outflow checks each allocated lot against both its as-of-date balance and its **current** balance. A lot has exactly one inflow (its creation), so only outflows follow and the current balance is its lowest point from the movement date on; checking it stops a backdated, out-of-order outflow from taking stock a later-dated outflow already took.
+- **Dispatch and cancellation (P5):** dispatch posts one `DISPATCH` movement per invoice line (outflow, valued at WAC). An invoice is never deleted; `cancel` writes a `credit_note` and `inventory.post_reversals()` posts a `REVERSAL` per dispatch movement — same lot, opposite qty and value, `reverses_id` pointing at the original (UNIQUE, so reversed at most once). Mirroring (not recomputing) makes the undo exact: stock and the item's WAC return to where they were.
 - **Offline orders:**
   - The PWA queues each order in localStorage with `client_uuid = crypto.randomUUID()` and sends it as the `Idempotency-Key`.
   - Server: same key + same body hash → replay the stored response. Same key + different body → 409. `sales_order.client_uuid` is UNIQUE.

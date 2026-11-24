@@ -12,6 +12,7 @@ from app.core.health import router as health_router
 from app.core.spa import SPAStaticFiles
 from app.inventory.router import router as stock_router
 from app.masters.router import router as masters_router
+from app.payments.router import router as payments_router
 from app.production.router import router as production_router
 from app.purchasing.router import router as purchasing_router
 from app.sales.router import router as sales_router
@@ -39,6 +40,7 @@ def create_app() -> FastAPI:
         production_router,
         sales_router,
         billing_router,
+        payments_router,
     )
     for router in routers:
         app.include_router(router, prefix=API_PREFIX)

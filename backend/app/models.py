@@ -13,6 +13,7 @@ from app.billing.models import (
 )
 from app.inventory.models import StockAdjustment, StockAdjustmentLine, StockLot, StockMovement
 from app.masters.models import Bom, BomLine, CompanySettings, Customer, Item, ItemUnit, Supplier
+from app.payments.models import Payment, PaymentAllocation
 from app.production.models import ProductionRun, RunConsumption, RunOverhead
 from app.purchasing.models import Purchase, PurchaseLine
 from app.sales.models import IdempotencyKey, OrderLine, SalesOrder
@@ -40,6 +41,8 @@ __all__ = [
     "Item",
     "ItemUnit",
     "OrderLine",
+    "Payment",
+    "PaymentAllocation",
     "SalesOrder",
     "StockAdjustment",
     "StockAdjustmentLine",

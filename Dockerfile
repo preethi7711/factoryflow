@@ -34,6 +34,8 @@ USER appuser
 
 # Render sets PORT (default 10000); locally it falls back to 8000.
 # Migrations run on every start: a no-op when the schema is already current.
+# SEED_ON_START=1 (set in the Render dashboard) loads the benchmark data and demo logins; the seed
+# does nothing once users exist, so it is safe on every restart.
 # --forwarded-allow-ips: trust Render's proxy, so the app sees the real https scheme.
 EXPOSE 8000
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --forwarded-allow-ips '*'"]
+CMD ["sh", "-c", "alembic upgrade head && if [ \"$SEED_ON_START\" = 1 ]; then python -m app.seed; fi && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --forwarded-allow-ips '*'"]

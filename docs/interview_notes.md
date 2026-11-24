@@ -338,3 +338,51 @@ worth recounting is the concurrency guard: two payments racing to pay the same i
 by the `FOR UPDATE` lock, so exactly one commits and the committed sum of allocations equals the invoice total,
 never twice it. The lesson: the moment a check reads-then-writes a shared total, a row lock (not just the
 application check) is what makes it safe under concurrency.
+
+## P7: Reports, exports and the invoice PDF
+
+### What it is
+- Four read-only reports (sales register, stock summary, stock ledger, production), each exportable to CSV or
+  XLSX, plus the GST invoice as a PDF. No new stock or money logic — this phase only *reads*.
+
+### The 3 files that matter
+1. `backend/app/reports/service.py`: the four builders; each returns one `Report` envelope.
+2. `backend/app/reports/export.py`: that envelope → CSV / XLSX.
+3. `backend/app/billing/pdf.py`: the invoice PDF (fpdf2 + the bundled DejaVu font).
+
+### One trace: `GET /api/v1/reports/stock-summary?from=2026-11-01&to=2026-11-30`
+`require_roles(auditor, admin, owner)` → for each item: opening = `balance(as_of = from − 1 day)`, the period
+receipts/issues/adjustments from one grouped query over `[from, to]`, closing = `balance(as_of = to)` → build
+the `{columns, rows, totals}` envelope → return JSON, or (with `?format=csv|xlsx`) the same table as a file.
+`closing` is the very number `/stock/balance` returns, so the report can't disagree with stock.
+
+### Five likely questions
+1. **How do the reports reconcile with the ledger?** The stock summary is built from the same `SUM(ledger)`
+   the balances use. Opening (`< from`), the period (`[from, to]`) and closing (`≤ to`) tile the timeline with
+   no gap or overlap, so `opening + receipts − issues ± adjustments == closing` is an identity, and closing is
+   literally the balance endpoint. A test asserts both for every item.
+2. **Why one envelope for JSON, CSV and XLSX?** All three render from the same `{columns, rows, totals}`, so an
+   export can never carry different numbers from the screen — there's one source, not three.
+3. **Why generate the PDF on request instead of storing it?** Render Free has no persistent disk, and the
+   invoice row is the source of truth; regenerating is always consistent and there's nothing stale to keep.
+4. **Why bundle a font?** The built-in PDF fonts are latin-1 only, so the rupee sign (U+20B9) needs a Unicode
+   TTF. DejaVu is committed under `app/billing/fonts` and ships in the image — no Pango/Cairo system libraries,
+   which is exactly why fpdf2 was chosen over WeasyPrint.
+5. **Why do the PDF's lines always sum to its total?** The per-line taxable and CGST/SGST/IGST were computed
+   and rounded once, at invoice time, and stored on `invoice_line`. The PDF prints those stored numbers; it
+   never recomputes tax, so the lines and the total can't drift apart.
+
+Bonus: the sales register total is **gross** — a cancelled invoice is still listed (with its status) and its
+credit note isn't netted off. That's deliberate for an audit register; net sales belong in the P10 GST summary.
+
+### Practice change (do it alone)
+Add an **HSN column** to the sales register (each invoice line carries `hsn`): group a line's taxable and tax
+by HSN and show HSN-wise subtotals — the shape GSTR-1 wants. Add a test that the HSN subtotals sum to the
+register total.
+
+### P7 hardening (what the hostile audit found)
+The `ledger-auditor` wrote 24 tests and confirmed **no** break: every report, export and PDF agreed with the
+ledger and the invoices, and nothing was dropped, duplicated or mis-bucketed (it even checked a dispatch later
+cancelled in the same period — gross issue + reversal adjustment, closing still exact). The lesson: a report is
+trustworthy when it's *derived from* the system of record by a provable identity, not re-aggregated into a
+second copy that can drift.

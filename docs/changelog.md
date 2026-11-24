@@ -6,6 +6,29 @@ Each milestone adds a section. Commit hashes are in `git log`.
 ## [Unreleased]
 
 ### Added
+- P7 `reports` (read-only; auditor/admin/owner): `GET /reports/{sales-register,stock-summary,stock-ledger,
+  production}` with `{from,to}`. A uniform envelope (columns + rows + totals) renders as JSON, or as CSV
+  (stdlib `csv`, utf-8-sig) or XLSX (openpyxl) behind `?format=`. The stock summary reconciles to the ledger
+  (opening + receipts − issues ± adjustments == closing == SUM(ledger)); the production report reuses
+  `production.service` for cost and variance; the sales register sums per column.
+- P7 `billing`: `GET /invoices/{id}/pdf` — the GST tax invoice as a PDF (fpdf2 + a bundled DejaVu TTF so the
+  rupee sign renders), generated on request (Render has no disk). GSTIN, HSN, taxable, CGST+SGST or IGST, FY
+  number; the printed lines sum to the printed total.
+- deps: fpdf2==2.8.2, openpyxl==3.1.5 (architecture §2); `DejaVuSans.ttf` bundled under `app/billing/fonts`,
+  marked binary in `.gitattributes`.
+- With the four report endpoints the benchmark scenario runs end to end (step 9 no longer stops it); every
+  benchmark check stays green.
+- `ledger-auditor` P7 suite in `tests/audit/` (24 guards; no break — reports/exports/PDF agree with the
+  ledger and invoices, and wrote nothing).
+
+### Notes (not breaks, for P10)
+- The sales register totals are gross (a cancelled invoice is still listed, with its status), and a dispatch
+  cancelled within the period shows as a gross issue plus a reversal adjustment (closing stays exact). Net
+  sales / collections belong in the P10 GST summary and ageing work.
+
+## P6 payments (benchmark gate)
+
+### Added
 - P6 `payments`: `POST /payments` (admin) — record a receipt and allocate it to the customer's invoices
   in one transaction. Validates allocations sum to the amount, rejects a duplicate invoice, a non-positive
   amount, a cancelled invoice, an invoice of another customer, and over-allocation (allocated + new >

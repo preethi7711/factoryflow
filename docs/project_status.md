@@ -2,7 +2,7 @@
 
 _Last updated: 2026-11-24_
 
-## Current phase: P6 done — **benchmark gate GREEN** (ledger-audited). Next: **P7 reports + invoice PDF**
+## Current phase: P7 done — reports + invoice PDF (ledger-audited). Next: **P8 frontend + offline order queue**
 
 **Live:** https://factoryflow-icdx.onrender.com (Render Free, Singapore, auto-deploys from `main`; Neon Free DB).
 Verified 2026-11-23 (P3): `/api/v1/health` → `{"status":"ok","db":"ok"}`, `/` serves the placeholder page,
@@ -18,8 +18,9 @@ P3 migration applied on Neon. First deploy failed because Render's **Root Direct
 | P4 | Purchases + production runs, variance, overheads, cost; ledger-audited | ✅ done |
 | P5 | Orders (idempotent) → approve + stock check → invoice (GST, FY no.) → dispatch + credit notes; ledger-audited | ✅ done |
 | P6 | Payments + allocation + outstanding — **benchmark gate GREEN**; ledger-audited | ✅ done |
-| P7 | Invoice PDF + reports (registers, stock, production) + CSV/XLSX export | ⚪ next |
-| P8–P9 | Frontend + offline queue → README/design note/deploy | ⚪ |
+| P7 | Invoice PDF + reports (registers, stock, production) + CSV/XLSX export; ledger-audited | ✅ done |
+| P8 | Frontend (thin): login, salesman mobile order + offline queue, admin/production/stock screens | ⚪ next |
+| P9 | README + design note + final deploy check + demo-video script | ⚪ |
 | P10–P11 | Should-haves → stretch | ⚪ |
 
 Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_notes.md](interview_notes.md).
@@ -72,11 +73,22 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 - P6 is the **benchmark gate**: `pytest -m benchmark` is fully green (B1–B13 + salesman-403 +
   invariants). The ledger-auditor confirmed no P6 break (21 guards). Known gap: `POST /payments` has
   no idempotency key yet (can't drift money; deferred to P8 with the offline queue).
+- P7: reports are read-only and render through one envelope (columns + rows + totals), so JSON, CSV
+  (stdlib `csv`) and XLSX (openpyxl) are the same table. The stock summary is computed from the same
+  ledger the balances use — opening/period/closing tile the timeline — so it reconciles by
+  construction. The invoice PDF (fpdf2 + a bundled DejaVu TTF for ₹) is generated on request; the
+  font is committed under `app/billing/fonts` (binary in `.gitattributes`) and ships via `COPY backend/`.
+- P7 (after the ledger-auditor, 24 guards, no break): the reports/exports/PDF agree with the ledger and
+  invoices and write nothing. Presentation notes for P10: the sales register totals are gross (cancelled
+  invoices listed with status), and a dispatch cancelled in-period shows gross issues + a reversal
+  adjustment (closing stays exact).
 
 ## Open issues
 - Hours/day unconfirmed (assumed ~6, H1).
-- P5 is pushed (Render redeploying). After pushing P6, confirm the deploy is live and the three new
-  migrations (`211c1ab490c2` sales, `c2c35bc2ef1c` billing, `7594a71dfb10` payments) applied on Neon.
+- P5 and P6 are pushed and the live deploy was verified 2026-11-24 (`/api/v1/health` ok; a P6 route
+  returns 401, so the P6 build is live; migrations `211c1ab490c2`/`c2c35bc2ef1c`/`7594a71dfb10` applied).
+  P7 adds **no migration** but new runtime deps (fpdf2, openpyxl) and the bundled font: after pushing P7,
+  confirm the Render image rebuilt and `/api/v1/health` is still ok.
 - Render: Health Check Path is still empty; set it to `/api/v1/health` in the dashboard (optional, recommended).
 - Live DB: migrations run on every deploy, but Neon is **not seeded**, so the live site has no logins yet.
   Decide by P8: run `python -m app.seed` against Neon from a local shell, or seed at startup behind an env flag.
@@ -87,8 +99,8 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 - WIP gap (no test): materials issued to a run that never completes have left stock and show in no report
   (no work-in-progress account, no **run** reversal yet). Invoice-cancellation reversals landed in P5
   (`post_reversals()`); a run reversal would reuse the same primitive.
-- Not built yet: reports and invoice PDF (P7); the frontend and the offline order queue (P8);
-  edit/deactivate endpoints for masters (create only so far).
+- Not built yet: the frontend and the offline order queue (P8); README + design note + demo script (P9);
+  edit/deactivate endpoints for masters (create only so far); net-sales / GST summary / ageing (P10).
 - Every push to `main` redeploys Render (about 1 min), including docs-only pushes.
 - `gh` CLI not installed; pushes use plain git.
 - Two Dockerfiles on purpose: root `Dockerfile` = production (Render); `backend/Dockerfile` = dev (compose,
@@ -97,9 +109,9 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 
 ## Benchmark scoreboard
 
-`pytest -q`: 290 passed, 0 xfailed (2026-11-24). **`pytest -m benchmark` is fully green — the benchmark
-gate is passed.** The scenario runs through step 8 (payment, overheads, cost) and stops at step 9
-(`/reports/*`, P7); no benchmark check depends on step 9.
+`pytest -q`: 322 passed, 0 xfailed (2026-11-24). **`pytest -m benchmark` is fully green.** With the P7
+report endpoints the scenario now runs end to end (all 9 steps, reports included); no benchmark check
+depends on step 9, but it no longer stops the run.
 
 | Check | Status |
 |---|---|
@@ -112,29 +124,34 @@ gate is passed.** The scenario runs through step 8 (payment, overheads, cost) an
 | B12, B12b (Distributor B shortage 32; INTER tax preview IGST 300) | ✅ pass |
 | B13 (cost per packet ₹31.14 through the full scenario) | ✅ pass |
 | Salesman 403 on approve | ✅ pass |
-| ledger-auditor P4 / P5 / P6 | ✅ books trustworthy (56 / 17 / 21 guards green) |
+| B1–B13 run end to end incl. reports (step 9) | ✅ pass |
+| ledger-auditor P4 / P5 / P6 / P7 | ✅ books trustworthy (56 / 17 / 21 / 24 guards green) |
 
 ## Next prompt (paste this to start the next session)
 
 ```
 Read CLAUDE.md and docs/project_status.md, then continue.
-The benchmark gate is already GREEN (pytest -m benchmark all pass); P7 adds deliverables on top, so keep
-every benchmark check green and change no expected number. Start phase P7 on branch feat/p7-reports,
-exactly as defined in docs/roadmap.md (~1.25 h; commit per piece). Follow the stock-ledger and gst-rules
-skills; read, never write, the ledger.
-- reports: GET /reports/sales-register, /reports/stock-summary, /reports/stock-ledger, /reports/production,
-  each taking {from, to} (the benchmark calls all four as the accountant in step 9 with 2026-11-01..30).
-  Read-only for auditor/admin/owner. The stock summary must equal SUM(ledger) per item (opening + receipts
-  - issues +/- adjustments = closing, each ledger row linked to its source doc) and reconcile in a test.
-  CSV + XLSX export (stdlib csv + openpyxl) behind a ?format=csv|xlsx param (M8).
-- invoice PDF (fpdf2 + the bundled DejaVu TTF for the rupee glyph): GET /invoices/{id}/pdf with GSTIN, HSN,
-  taxable value, CGST+SGST or IGST, and the FY number. Generated on request (Render has no disk). Optional
-  wow: a wa.me share link carrying the PDF URL.
-Match the step-9 report paths/params in tests/benchmark/test_section5.py (don't change expected numbers);
-once the four report endpoints exist the scenario runs end to end (step 9 no longer stops it). No xfail
-markers remain to remove. Then run the ledger-auditor subagent (attacks: a report total that disagrees with
-the ledger, an export that drops/duplicates rows, a PDF whose line taxes don't sum to its total) and fix
-what it confirms.
-Finish with tests and lint green, run the benchmark-check skill, /update-docs-and-commit, merge to main
-(ask before pushing), the teaching protocol, and an updated next prompt for P8.
+The whole must-have BACKEND is done and the benchmark gate is GREEN. P8 is the thin FRONTEND (plain JS,
+no TypeScript) + the minimal offline order queue — it changes no expected number and adds no backend
+behaviour except, optionally, an Idempotency-Key on POST /payments (closing the known P6 gap). Start
+phase P8 on branch feat/p8-frontend, as defined in docs/roadmap.md (~3 h; WARN me first if it may not fit,
+and commit per screen). Frontend is thin: all business rules stay in the API.
+- frontend/src (React + Vite + Tailwind, React Router, a fetch wrapper in src/api/): login per role
+  (store the JWT; the role comes from /auth/login). Screens by role (spec section 2):
+  - salesman (mobile-first, order in <1 min): pick customer + products from the price list, place the order.
+    Minimal OFFLINE QUEUE: each order gets client_uuid = crypto.randomUUID(), queued in localStorage and sent
+    as the Idempotency-Key; on reconnect it replays (same key + same body -> the server returns the first
+    order, so a double-send lands once). A "pending sync" count is a nice touch.
+  - admin: approval queue -> approve (shows the stock-cover shortage) -> raise invoice -> dispatch -> record
+    payment; link to the invoice PDF.
+  - production: start run / complete run / add overheads; see variance and cost.
+  - stock + reports: stock summary and ledger, with the CSV/XLSX download buttons.
+- Keep the existing benchmark + API tests green; add a small offline-replay test (a queued order sent twice
+  with one key creates one order). Run `cd frontend && npm run lint` and `npm run build`.
+If time is short, shrink to the salesman order screen + the admin approve/invoice/dispatch screens; reports
+stay API + download (roadmap cut note).
+Then run the ledger-auditor subagent only if P8 touched any server code (e.g. the payments Idempotency-Key);
+the frontend itself holds no ledger logic.
+Finish with tests and lint green (backend and frontend), /update-docs-and-commit, merge to main (ask before
+pushing), the teaching protocol, and an updated next prompt for P9 (README + design note + demo script).
 ```

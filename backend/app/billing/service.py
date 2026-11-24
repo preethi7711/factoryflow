@@ -110,6 +110,14 @@ def get_invoice(db: Session, invoice_id: int) -> InvoiceOut:
     return _invoice_out(db, _get_invoice(db, invoice_id))
 
 
+def invoice_pdf(db: Session, invoice_id: int) -> tuple[bytes, str]:
+    """The GST tax invoice as a PDF, plus a filename-safe version of its number."""
+    from app.billing.pdf import render_invoice_pdf
+
+    invoice = _get_invoice(db, invoice_id)
+    return render_invoice_pdf(db, invoice), invoice.invoice_no.replace("/", "-")
+
+
 # ---- FY numbering --------------------------------------------------------------------
 
 

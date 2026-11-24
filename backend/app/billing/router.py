@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 
 from app.auth.deps import require_roles
 from app.auth.models import AppUser, Role
@@ -31,6 +31,16 @@ def create_invoice(order_id: int, body: InvoiceCreate, db: DbSession, user: Admi
 @router.get("/invoices/{invoice_id}", response_model=InvoiceOut)
 def get_invoice(invoice_id: int, db: DbSession, user: InvoiceReader) -> InvoiceOut:
     return service.get_invoice(db, invoice_id)
+
+
+@router.get("/invoices/{invoice_id}/pdf")
+def invoice_pdf(invoice_id: int, db: DbSession, user: InvoiceReader) -> Response:
+    body, name = service.invoice_pdf(db, invoice_id)
+    return Response(
+        content=body,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{name}.pdf"'},
+    )
 
 
 @router.post("/invoices/{invoice_id}/dispatch", response_model=InvoiceOut)

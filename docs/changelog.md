@@ -5,6 +5,18 @@ Each milestone adds a section. Commit hashes are in `git log`.
 
 ## [Unreleased]
 
+### Added (P9)
+- `README.md`, `docs/design_note.md`, `docs/demo_script.md` (deliverables 2–4).
+- Production screen: purchase card (benchmark step 1); editable raw issues at start, packaging used +
+  damaged at completion, full planned-vs-actual variance table in kg/l.
+- Admin: part payments with the server's outstanding; invoice tax split; IGST tax preview on a shortage.
+- Production image: optional idempotent seed on start (`SEED_ON_START=1`).
+
+### Fixed (P9)
+- UI money parsed to paise from text (no float); quantities multiplied as exact decimals; local (IST)
+  dates instead of UTC, which had also made the month's reports start on the last day of the previous month.
+- Offline order queue is per salesman, so one browser can't show or send another salesman's orders.
+
 ### Added
 - P8 frontend (React + Vite + Tailwind + React Router, plain JS; business rules stay in the API): JWT login
   per role with role-gated routes, and one `fetch` wrapper (`src/api/client.js`: `ApiError`, plus `apiBlob`

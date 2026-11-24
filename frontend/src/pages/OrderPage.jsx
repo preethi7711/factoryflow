@@ -2,16 +2,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { inr } from "../format.js";
+import { inr, localToday } from "../format.js";
 import { makeQueue } from "../offline/queue.js";
 import { Banner, Button, Card, Field, input } from "../ui.jsx";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localToday();
 
 export default function OrderPage() {
   const { auth } = useAuth();
   const token = auth.token;
-  const queue = useMemo(() => makeQueue(window.localStorage), []);
+  // One queue per salesman, so a shared phone (or the demo browser) never sends A's order as B.
+  const queue = useMemo(
+    () => makeQueue(window.localStorage, `ff.order.queue.${auth.username}`),
+    [auth.username],
+  );
 
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);

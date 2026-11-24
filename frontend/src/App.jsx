@@ -1,24 +1,64 @@
-import { useEffect, useState } from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
 
-// P1b placeholder: proves the built frontend and the API are served from the same URL.
-// The real screens arrive in P8.
+import { useAuth } from "./auth/AuthContext.jsx";
+import Layout from "./components/Layout.jsx";
+import { HOME } from "./nav.js";
+import AdminOrdersPage from "./pages/AdminOrdersPage.jsx";
+import LoginPage from "./pages/LoginPage.jsx";
+import OrderPage from "./pages/OrderPage.jsx";
+import ProductionPage from "./pages/ProductionPage.jsx";
+import StockPage from "./pages/StockPage.jsx";
+
+function Protected({ roles, children }) {
+  const { auth } = useAuth();
+  if (!auth) return <Navigate to="/login" replace />;
+  if (roles && !roles.includes(auth.role)) {
+    return <Navigate to={HOME[auth.role] || "/login"} replace />;
+  }
+  return children;
+}
+
 export default function App() {
-  const [health, setHealth] = useState("checking...");
-
-  useEffect(() => {
-    fetch("/api/v1/health")
-      .then((r) => r.json())
-      .then((body) => setHealth(`API ${body.status}, database ${body.db}`))
-      .catch(() => setHealth("API unreachable"));
-  }, []);
-
+  const { auth } = useAuth();
+  const home = (auth && HOME[auth.role]) || "/login";
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "2rem", maxWidth: 480 }}>
-      <h1>FactoryFlow</h1>
-      <p>Order-to-audit system. The app screens are coming soon.</p>
-      <p>
-        Status: <strong>{health}</strong>
-      </p>
-    </main>
+    <Routes>
+      <Route path="/login" element={auth ? <Navigate to={home} replace /> : <LoginPage />} />
+      <Route element={<Layout />}>
+        <Route
+          path="/order"
+          element={
+            <Protected roles={["salesman"]}>
+              <OrderPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/orders"
+          element={
+            <Protected roles={["admin"]}>
+              <AdminOrdersPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/production"
+          element={
+            <Protected roles={["production"]}>
+              <ProductionPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/stock"
+          element={
+            <Protected roles={["admin", "auditor", "owner"]}>
+              <StockPage />
+            </Protected>
+          }
+        />
+      </Route>
+      <Route path="*" element={<Navigate to={home} replace />} />
+    </Routes>
   );
 }

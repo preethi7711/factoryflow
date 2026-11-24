@@ -2,7 +2,7 @@
 
 _Last updated: 2026-11-24_
 
-## Current phase: P7 done — reports + invoice PDF (ledger-audited). Next: **P8 frontend + offline order queue**
+## Current phase: P8 done — thin frontend + offline order queue. Next: **P9 README + design note + demo script**
 
 **Live:** https://factoryflow-icdx.onrender.com (Render Free, Singapore, auto-deploys from `main`; Neon Free DB).
 Verified 2026-11-23 (P3): `/api/v1/health` → `{"status":"ok","db":"ok"}`, `/` serves the placeholder page,
@@ -19,8 +19,8 @@ P3 migration applied on Neon. First deploy failed because Render's **Root Direct
 | P5 | Orders (idempotent) → approve + stock check → invoice (GST, FY no.) → dispatch + credit notes; ledger-audited | ✅ done |
 | P6 | Payments + allocation + outstanding — **benchmark gate GREEN**; ledger-audited | ✅ done |
 | P7 | Invoice PDF + reports (registers, stock, production) + CSV/XLSX export; ledger-audited | ✅ done |
-| P8 | Frontend (thin): login, salesman mobile order + offline queue, admin/production/stock screens | ⚪ next |
-| P9 | README + design note + final deploy check + demo-video script | ⚪ |
+| P8 | Frontend (thin): login, salesman mobile order + offline queue, admin/production/stock screens | ✅ done |
+| P9 | README + design note + final deploy check + demo-video script | ⚪ next |
 | P10–P11 | Should-haves → stretch | ⚪ |
 
 Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_notes.md](interview_notes.md).
@@ -82,13 +82,27 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
   invoices and write nothing. Presentation notes for P10: the sales register totals are gross (cancelled
   invoices listed with status), and a dispatch cancelled in-period shows gross issues + a reversal
   adjustment (closing stays exact).
+- P8: the frontend is thin plain JS (React + Vite + Tailwind + React Router) — all rules stay in the API.
+  One fetch wrapper carries the JWT; routes are role-gated. The offline order queue lives in localStorage:
+  each order's `client_uuid` is the `Idempotency-Key`, so the queue retries freely and the server replays
+  (one order). No service worker yet — "minimal offline queue" is the localStorage queue + online/offline
+  events; a full PWA shell cache is a later polish. The admin flow keeps the raised invoice in session
+  state to drive dispatch/payment (there is no list-invoices endpoint yet; a reload before dispatch needs
+  one — fine for the demo, a GET /invoices filter would make it robust). Verified in a browser.
+- P8 did **not** add the payments `Idempotency-Key`; it stayed a known gap (can't drift money). Fold it in
+  with any P9/P10 hardening if the offline queue is extended to payments.
 
 ## Open issues
 - Hours/day unconfirmed (assumed ~6, H1).
-- P5 and P6 are pushed and the live deploy was verified 2026-11-24 (`/api/v1/health` ok; a P6 route
-  returns 401, so the P6 build is live; migrations `211c1ab490c2`/`c2c35bc2ef1c`/`7594a71dfb10` applied).
-  P7 adds **no migration** but new runtime deps (fpdf2, openpyxl) and the bundled font: after pushing P7,
-  confirm the Render image rebuilt and `/api/v1/health` is still ok.
+- P5–P7 are pushed; the live deploy was verified 2026-11-24 up to P6 (`/api/v1/health` ok, a P6 route 401s,
+  migrations `211c1ab490c2`/`c2c35bc2ef1c`/`7594a71dfb10` applied). P7 (fpdf2/openpyxl + font) and P8
+  (frontend) add **no migration**; after pushing them confirm the Render image rebuilt and `/` serves the
+  new UI. The P7 deploy was not separately re-verified.
+- **Local dev gotcha:** `docker compose up` does NOT run migrations (only the production image does on start).
+  After pulling new migrations, run `docker compose exec api alembic upgrade head` or the dev DB lags — P8's
+  browser test hit a 500 because the dev DB was missing the `payment` table until migrated.
+- Admin UI dispatch/payment needs the raised invoice held in session (no list-invoices endpoint); a
+  `GET /invoices?order_id=` (or an `invoice_id` on the order) would make a reload-before-dispatch robust.
 - Render: Health Check Path is still empty; set it to `/api/v1/health` in the dashboard (optional, recommended).
 - Live DB: migrations run on every deploy, but Neon is **not seeded**, so the live site has no logins yet.
   Decide by P8: run `python -m app.seed` against Neon from a local shell, or seed at startup behind an env flag.
@@ -99,8 +113,9 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 - WIP gap (no test): materials issued to a run that never completes have left stock and show in no report
   (no work-in-progress account, no **run** reversal yet). Invoice-cancellation reversals landed in P5
   (`post_reversals()`); a run reversal would reuse the same primitive.
-- Not built yet: the frontend and the offline order queue (P8); README + design note + demo script (P9);
-  edit/deactivate endpoints for masters (create only so far); net-sales / GST summary / ageing (P10).
+- Not built yet: README + design note + demo script (P9); a service-worker PWA shell (P8 did the
+  localStorage queue only); edit/deactivate endpoints for masters (create only so far); payments
+  Idempotency-Key; net-sales / GST summary / ageing (P10).
 - Every push to `main` redeploys Render (about 1 min), including docs-only pushes.
 - `gh` CLI not installed; pushes use plain git.
 - Two Dockerfiles on purpose: root `Dockerfile` = production (Render); `backend/Dockerfile` = dev (compose,
@@ -110,8 +125,9 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 ## Benchmark scoreboard
 
 `pytest -q`: 322 passed, 0 xfailed (2026-11-24). **`pytest -m benchmark` is fully green.** With the P7
-report endpoints the scenario now runs end to end (all 9 steps, reports included); no benchmark check
-depends on step 9, but it no longer stops the run.
+report endpoints the scenario runs end to end (all 9 steps, reports included). P8 added no backend code.
+Frontend (`cd frontend`): `npm run test` 3 passed (offline-queue replay), `npm run lint` and `npm run build`
+clean; the salesman and admin flows were driven in a browser against the seeded dev DB.
 
 | Check | Status |
 |---|---|
@@ -131,27 +147,23 @@ depends on step 9, but it no longer stops the run.
 
 ```
 Read CLAUDE.md and docs/project_status.md, then continue.
-The whole must-have BACKEND is done and the benchmark gate is GREEN. P8 is the thin FRONTEND (plain JS,
-no TypeScript) + the minimal offline order queue — it changes no expected number and adds no backend
-behaviour except, optionally, an Idempotency-Key on POST /payments (closing the known P6 gap). Start
-phase P8 on branch feat/p8-frontend, as defined in docs/roadmap.md (~3 h; WARN me first if it may not fit,
-and commit per screen). Frontend is thin: all business rules stay in the API.
-- frontend/src (React + Vite + Tailwind, React Router, a fetch wrapper in src/api/): login per role
-  (store the JWT; the role comes from /auth/login). Screens by role (spec section 2):
-  - salesman (mobile-first, order in <1 min): pick customer + products from the price list, place the order.
-    Minimal OFFLINE QUEUE: each order gets client_uuid = crypto.randomUUID(), queued in localStorage and sent
-    as the Idempotency-Key; on reconnect it replays (same key + same body -> the server returns the first
-    order, so a double-send lands once). A "pending sync" count is a nice touch.
-  - admin: approval queue -> approve (shows the stock-cover shortage) -> raise invoice -> dispatch -> record
-    payment; link to the invoice PDF.
-  - production: start run / complete run / add overheads; see variance and cost.
-  - stock + reports: stock summary and ledger, with the CSV/XLSX download buttons.
-- Keep the existing benchmark + API tests green; add a small offline-replay test (a queued order sent twice
-  with one key creates one order). Run `cd frontend && npm run lint` and `npm run build`.
-If time is short, shrink to the salesman order screen + the admin approve/invoice/dispatch screens; reports
-stay API + download (roadmap cut note).
-Then run the ledger-auditor subagent only if P8 touched any server code (e.g. the payments Idempotency-Key);
-the frontend itself holds no ledger logic.
-Finish with tests and lint green (backend and frontend), /update-docs-and-commit, merge to main (ask before
-pushing), the teaching protocol, and an updated next prompt for P9 (README + design note + demo script).
+Everything through P8 is done (must-have backend + benchmark green + thin frontend, all merged and live).
+P9 is the DELIVERABLES phase (docs + a final check), per docs/roadmap.md (~1 h) on branch feat/p9-deliver.
+No new app behaviour and no expected-number changes; keep tests/lint green.
+- README.md at the repo root an evaluator can run from alone: what it is; the stack and the tiers; how to
+  run locally (`docker compose up` THEN `docker compose exec api alembic upgrade head` — note the dev DB
+  does not auto-migrate — then `docker compose exec api python -m app.seed`); the test logins table (spec §2,
+  password = SEED_DEMO_PASSWORD); how to run the tests and `pytest -m benchmark`; the benchmark table
+  (B1–B13 from project_spec §4); the assumptions (A1–A18); the live URL + the ~1 min Render cold-start note.
+- A short design note (<=2 pages, docs/design_note.md): the two loops meeting at finished-goods stock, the
+  append-only ledger as the heart (stock = SUM(ledger)), money-as-paise, GST, idempotent orders, the
+  ledger-auditor practice, and the trade-offs taken for the free tier.
+- Final deploy check: seed Neon so the live site has logins (run `python -m app.seed` against Neon from a
+  local shell using its DATABASE_URL, OR add a guarded seed-on-startup) — decide and do one; then verify
+  login + the scenario on the live URL. Set Render's Health Check Path to /api/v1/health.
+- A demo-video script (docs/demo_script.md): the ~3 min click-through (salesman order offline -> admin
+  approve/invoice/dispatch/payment -> reports + PDF -> trace a number to the ledger).
+Finish with tests and lint green, /update-docs-and-commit, merge to main (ask before pushing), the teaching
+protocol, and a P10 next prompt (should-haves: GST summary GSTR-1/3B, purchase register, ageing, variance
+alert list, owner dashboard).
 ```

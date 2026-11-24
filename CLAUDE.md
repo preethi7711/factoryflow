@@ -105,7 +105,7 @@ docs/                    # spec, architecture, status, changelog, PROBLEM
 | Task | Command |
 | --- | --- |
 | Setup (first time) | `cp .env.example .env` then `docker compose build` |
-| Run everything | `docker compose up` (API on :8000; `API_PORT=8001` if busy; web on :5173 *(planned, P8)*) |
+| Run everything | `docker compose up` (API on :8000; `API_PORT=8001` if busy). Frontend dev server on :5173 via `cd frontend && npm run dev` |
 | DB migrate | `docker compose run --rm api alembic upgrade head` |
 | Seed benchmark data | `docker compose run --rm api python -m app.seed` (no-op if users exist) |
 | Test (all) | `docker compose run --rm api pytest` |
@@ -114,7 +114,7 @@ docs/                    # spec, architecture, status, changelog, PROBLEM
 | Production image (what Render builds) | `docker build -t factoryflow .` (root `Dockerfile`; listens on `$PORT`) |
 | Frontend dev / build | `cd frontend && npm install && npm run dev` / `npm run build` |
 | Host venv (for the ruff hook) | `cd backend && py -3.12 -m venv .venv && .venv/Scripts/pip install -r requirements-dev.txt` |
-| Lint frontend | `cd frontend && npm run lint` *(planned, P8)* |
+| Lint frontend | `cd frontend && npm run lint` (and `npm run test` for the offline-queue test) |
 
 ## 7. Installation
 

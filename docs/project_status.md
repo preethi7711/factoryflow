@@ -2,7 +2,7 @@
 
 _Last updated: 2026-11-24 (P9)_
 
-## Current phase: P9 done — deliverables + demo-blocking UI fixes. Next: **push + seed the live DB, then the frontend upgrade (design direction C)**
+## Current phase: P9 done — deliverables + demo-blocking UI fixes. Next: **the frontend upgrade (design direction C)**
 
 **Live:** https://factoryflow-icdx.onrender.com (Render Free, Singapore, auto-deploys from `main`; Neon Free DB).
 Verified 2026-11-23 (P3): `/api/v1/health` → `{"status":"ok","db":"ok"}`, `/` serves the placeholder page,
@@ -20,7 +20,7 @@ P3 migration applied on Neon. First deploy failed because Render's **Root Direct
 | P6 | Payments + allocation + outstanding — **benchmark gate GREEN**; ledger-audited | ✅ done |
 | P7 | Invoice PDF + reports (registers, stock, production) + CSV/XLSX export; ledger-audited | ✅ done |
 | P8 | Frontend (thin): login, salesman mobile order + offline queue, admin/production/stock screens | ✅ done |
-| P9 | README + design note + demo script + UI fixes for benchmark steps 1–3, 6, 7 + seed-on-start | ✅ done (live seeding needs the Render env vars) |
+| P9 | README + design note + demo script + UI fixes for benchmark steps 1–3, 6, 7 + seed-on-start | ✅ done, live and seeded |
 | UI | Frontend upgrade, design direction C "Pouch & Process", same flows | ⚪ next |
 | P10–P11 | Should-haves → stretch | ⚪ |
 
@@ -107,10 +107,9 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
   migration file changes after you ran it, reset the dev DB (`DROP SCHEMA public CASCADE` + upgrade + seed).
 
 ## Open issues
-- **To do on Render (user, dashboard):** set `SEED_DEMO_PASSWORD=factoryflow-demo` (the README publishes it)
-  and `SEED_ON_START=1`, then push `main`; after the first successful deploy, check that the six logins
-  work, then set `SEED_ON_START=0` (optional, since the seed is a no-op once users exist). Set Health Check
-  Path to `/api/v1/health`.
+- **Live site seeded and verified 2026-11-24:** P9 deployed (new bundle served), `SEED_ON_START=1` and
+  `SEED_DEMO_PASSWORD=factoryflow-demo` set on Render, `admin` login confirmed by the user. Optional: set
+  `SEED_ON_START=0` and Health Check Path `/api/v1/health` in the dashboard.
 - Hours/day unconfirmed (assumed ~6, H1).
 - P5–P7 are pushed; the live deploy was verified 2026-11-24 up to P6 (`/api/v1/health` ok, a P6 route 401s,
   migrations `211c1ab490c2`/`c2c35bc2ef1c`/`7594a71dfb10` applied). P7 (fpdf2/openpyxl + font) and P8

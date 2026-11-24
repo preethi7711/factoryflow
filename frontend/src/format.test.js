@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decMul, inr, localToday, toPaise } from "./format.js";
+import { decMul, inr, localToday, showQty, toPaise } from "./format.js";
 
 describe("toPaise", () => {
   it("parses rupees exactly", () => {
@@ -30,5 +30,13 @@ describe("localToday / inr", () => {
   });
   it("formats Indian grouping", () => {
     expect(inr(787500)).toBe("₹7,875.00");
+  });
+});
+
+describe("showQty", () => {
+  it("shows kg / l for base g / ml and keeps other units", () => {
+    expect(showQty("10500.000", "ml")).toBe("10.5 l");
+    expect(showQty("120000.000", "g")).toBe("120 kg");
+    expect(showQty("194.000", "pcs")).toBe("194 pcs");
   });
 });

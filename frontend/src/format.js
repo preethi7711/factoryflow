@@ -52,3 +52,9 @@ export function decMul(a, b) {
 
 // Base units are g / ml (exact storage); people think in kg / l. Display factor per base unit.
 export const DISPLAY_UNIT = { g: ["kg", "0.001"], ml: ["l", "0.001"] };
+
+// "10500.000" ml -> "10.5 l", "194.000" pcs -> "194 pcs". Exact string maths; for display only.
+export function showQty(qty, uom) {
+  const [unit, factor] = DISPLAY_UNIT[uom] || [uom, "1"];
+  return `${decMul(qty, factor)} ${unit}`;
+}

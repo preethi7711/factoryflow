@@ -435,3 +435,36 @@ orders that any screen shows, updated when the queue flushes. It makes the offli
 No hostile audit — the frontend holds no ledger logic (the server enforces everything). It's covered by a
 Vitest offline-replay test (same key twice → one order) and a browser run of the salesman order and the full
 admin approve→invoice→dispatch→payment flow against the seeded dev database.
+
+## P9: Deliverables and demo-proofing the screens
+
+### What it is
+The README, a 2-page design note and a demo script, plus the UI fixes found by clicking through the
+benchmark as a user would. The API could already do every step; three screens just didn't let you enter
+what the benchmark asks for (purchase, actual issues and damage, part payment).
+
+### The 3 files that matter
+- `frontend/src/pages/ProductionPage.jsx`: start (raw issues) → complete (output, packaging used, damaged) → overheads.
+- `frontend/src/format.js`: `toPaise` (rupee text → paise), `decMul` (exact decimal ×), `localToday` (IST date).
+- `Dockerfile`: `SEED_ON_START=1` seeds the live DB once; the seed skips when users already exist.
+
+### One trace: typing "10.5" for oil
+Planned shows `decMul("10000.000" ml, "0.001") = "10"` l → you type `10.5` → the page sends
+`{"item_id": 2, "qty": "10.5", "uom": "l"}` as a **string** → the API converts to 10500 ml with `Decimal`,
+posts an ISSUE movement of −10500 ml → `/variance` reads it back from the ledger: +5.00%, flagged.
+
+### Five likely questions
+1. **Why parse money from text instead of `Number(x) * 100`?** Floats can't hold most decimals exactly
+   (0.1 + 0.2 ≠ 0.3). `toPaise("600.5")` builds 60050 from the digits, so no rounding ever happens.
+2. **Why did the reports' month start on 31 October?** `new Date(2026,10,1).toISOString()` is UTC, which is
+   5:30 behind IST, so local midnight on 1 Nov is still 31 Oct in UTC. `localToday` uses local fields.
+3. **Why is the offline queue keyed per salesman?** On a shared phone (or one demo browser), an unsent
+   order of A's must never be sent with B's login.
+4. **How does the live site get its data without you touching the database URL?** The production image
+   runs the seed on start when `SEED_ON_START=1`. The seed is idempotent, so restarts are safe.
+5. **What went wrong locally with purchases?** The dev DB had an early draft of a migration. Lesson: if a
+   migration file changes after you ran it, rebuild the dev schema from the migrations.
+
+### Practice change (do it alone)
+Show the cost-per-packet **margin** on the production screen: (sale price − cost per packet), using
+`inr()`. Get the sale price from `GET /items` (already loaded for `kinds`), and don't compute money with floats.

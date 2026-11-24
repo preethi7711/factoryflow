@@ -1,8 +1,8 @@
 # Project status (session handoff file)
 
-_Last updated: 2026-11-24_
+_Last updated: 2026-11-24 (P9)_
 
-## Current phase: P8 done — thin frontend + offline order queue. Next: **P9 README + design note + demo script**
+## Current phase: P9 done — deliverables + demo-blocking UI fixes. Next: **push + seed the live DB, then the frontend upgrade (design direction C)**
 
 **Live:** https://factoryflow-icdx.onrender.com (Render Free, Singapore, auto-deploys from `main`; Neon Free DB).
 Verified 2026-11-23 (P3): `/api/v1/health` → `{"status":"ok","db":"ok"}`, `/` serves the placeholder page,
@@ -20,7 +20,8 @@ P3 migration applied on Neon. First deploy failed because Render's **Root Direct
 | P6 | Payments + allocation + outstanding — **benchmark gate GREEN**; ledger-audited | ✅ done |
 | P7 | Invoice PDF + reports (registers, stock, production) + CSV/XLSX export; ledger-audited | ✅ done |
 | P8 | Frontend (thin): login, salesman mobile order + offline queue, admin/production/stock screens | ✅ done |
-| P9 | README + design note + final deploy check + demo-video script | ⚪ next |
+| P9 | README + design note + demo script + UI fixes for benchmark steps 1–3, 6, 7 + seed-on-start | ✅ done (live seeding needs the Render env vars) |
+| UI | Frontend upgrade, design direction C "Pouch & Process", same flows | ⚪ next |
 | P10–P11 | Should-haves → stretch | ⚪ |
 
 Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_notes.md](interview_notes.md).
@@ -92,7 +93,24 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 - P8 did **not** add the payments `Idempotency-Key`; it stayed a known gap (can't drift money). Fold it in
   with any P9/P10 hardening if the offline queue is extended to payments.
 
+- P9: the screens could not show benchmark steps 1–3, 6 and 7 exactly (no purchase screen; the run issued
+  the full BOM with no field for 10.5 l oil / 194 pouches / 6 damaged / 9 cartons; payment always paid the
+  full total). Fixed in the frontend only, using inputs the API already accepted; the whole scenario was
+  then driven in a browser on a fresh dev DB and every number matched. Money typed in the UI is parsed to
+  paise from text (`toPaise`), quantities are multiplied as exact decimal strings (`decMul`), and dates use
+  the local calendar day (`localToday`; `toISOString()` gave the UTC day, which made November reports start
+  on 31 Oct). The offline queue is per salesman (`ff.order.queue.<username>`).
+- P9: the live DB is seeded by the production image when `SEED_ON_START=1` (idempotent: skipped once
+  users exist). Chosen over seeding Neon from a laptop so the database URL never leaves Render.
+- P9 lesson: the local dev DB had an early draft of the append-only migration (applied before the file
+  was final), so purchases failed locally only. Rebuilt the dev schema from the migrations. Rule: if a
+  migration file changes after you ran it, reset the dev DB (`DROP SCHEMA public CASCADE` + upgrade + seed).
+
 ## Open issues
+- **To do on Render (user, dashboard):** set `SEED_DEMO_PASSWORD=factoryflow-demo` (the README publishes it)
+  and `SEED_ON_START=1`, then push `main`; after the first successful deploy, check that the six logins
+  work, then set `SEED_ON_START=0` (optional, since the seed is a no-op once users exist). Set Health Check
+  Path to `/api/v1/health`.
 - Hours/day unconfirmed (assumed ~6, H1).
 - P5–P7 are pushed; the live deploy was verified 2026-11-24 up to P6 (`/api/v1/health` ok, a P6 route 401s,
   migrations `211c1ab490c2`/`c2c35bc2ef1c`/`7594a71dfb10` applied). P7 (fpdf2/openpyxl + font) and P8
@@ -103,9 +121,6 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
   browser test hit a 500 because the dev DB was missing the `payment` table until migrated.
 - Admin UI dispatch/payment needs the raised invoice held in session (no list-invoices endpoint); a
   `GET /invoices?order_id=` (or an `invoice_id` on the order) would make a reload-before-dispatch robust.
-- Render: Health Check Path is still empty; set it to `/api/v1/health` in the dashboard (optional, recommended).
-- Live DB: migrations run on every deploy, but Neon is **not seeded**, so the live site has no logins yet.
-  Decide by P8: run `python -m app.seed` against Neon from a local shell, or seed at startup behind an env flag.
 - **Benchmark gate is green** (`pytest -m benchmark`, no xfail left). The scenario now runs through step 8
   (payment, overheads, cost) and stops at step 9 (`/reports/*`, P7); no benchmark check depends on step 9.
 - `POST /payments` has no `Idempotency-Key` yet, so a retry posts a second receipt (it can't drift money —
@@ -113,7 +128,10 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 - WIP gap (no test): materials issued to a run that never completes have left stock and show in no report
   (no work-in-progress account, no **run** reversal yet). Invoice-cancellation reversals landed in P5
   (`post_reversals()`); a run reversal would reuse the same primitive.
-- Not built yet: README + design note + demo script (P9); a service-worker PWA shell (P8 did the
+- Demo recording: the admin page holds the raised invoice in memory, so don't reload it between benchmark
+  steps 5 and 7, and use a separate browser/incognito window for the salesman (docs/demo_script.md).
+- Stock summary shows base units (g, ml) and paise; the frontend upgrade should display kg/l and ₹.
+- Not built yet: a service-worker PWA shell (P8 did the
   localStorage queue only); edit/deactivate endpoints for masters (create only so far); payments
   Idempotency-Key; net-sales / GST summary / ageing (P10).
 - Every push to `main` redeploys Render (about 1 min), including docs-only pushes.
@@ -124,10 +142,12 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 
 ## Benchmark scoreboard
 
-`pytest -q`: 322 passed, 0 xfailed (2026-11-24). **`pytest -m benchmark` is fully green.** With the P7
-report endpoints the scenario runs end to end (all 9 steps, reports included). P8 added no backend code.
-Frontend (`cd frontend`): `npm run test` 3 passed (offline-queue replay), `npm run lint` and `npm run build`
-clean; the salesman and admin flows were driven in a browser against the seeded dev DB.
+`pytest -q`: 322 passed (2026-11-24, P9). **`pytest -m benchmark`: 19 passed.** P9 changed no backend code
+except the production image's optional seed. Frontend: `npm run test` 8 passed (money/qty/date helpers +
+offline queue), lint and build clean. **All nine benchmark steps were also driven through the UI** on a
+freshly seeded dev DB: ledger closing flour 120000 g, oil 19500 ml, spice 3800 g, pouches 306, cartons 21,
+FG 238 → 88; variance −6.00% / +5.00% flagged, pouches −3.00% not; invoice FF/2026-27/0001 ₹7,875;
+outstanding ₹3,875; Distributor B short 32 with IGST ₹300 preview; cost ₹31.14.
 
 | Check | Status |
 |---|---|
@@ -147,23 +167,17 @@ clean; the salesman and admin flows were driven in a browser against the seeded 
 
 ```
 Read CLAUDE.md and docs/project_status.md, then continue.
-Everything through P8 is done (must-have backend + benchmark green + thin frontend, all merged and live).
-P9 is the DELIVERABLES phase (docs + a final check), per docs/roadmap.md (~1 h) on branch feat/p9-deliver.
-No new app behaviour and no expected-number changes; keep tests/lint green.
-- README.md at the repo root an evaluator can run from alone: what it is; the stack and the tiers; how to
-  run locally (`docker compose up` THEN `docker compose exec api alembic upgrade head` — note the dev DB
-  does not auto-migrate — then `docker compose exec api python -m app.seed`); the test logins table (spec §2,
-  password = SEED_DEMO_PASSWORD); how to run the tests and `pytest -m benchmark`; the benchmark table
-  (B1–B13 from project_spec §4); the assumptions (A1–A18); the live URL + the ~1 min Render cold-start note.
-- A short design note (<=2 pages, docs/design_note.md): the two loops meeting at finished-goods stock, the
-  append-only ledger as the heart (stock = SUM(ledger)), money-as-paise, GST, idempotent orders, the
-  ledger-auditor practice, and the trade-offs taken for the free tier.
-- Final deploy check: seed Neon so the live site has logins (run `python -m app.seed` against Neon from a
-  local shell using its DATABASE_URL, OR add a guarded seed-on-startup) — decide and do one; then verify
-  login + the scenario on the live URL. Set Render's Health Check Path to /api/v1/health.
-- A demo-video script (docs/demo_script.md): the ~3 min click-through (salesman order offline -> admin
-  approve/invoice/dispatch/payment -> reports + PDF -> trace a number to the ledger).
-Finish with tests and lint green, /update-docs-and-commit, merge to main (ask before pushing), the teaching
-protocol, and a P10 next prompt (should-haves: GST summary GSTR-1/3B, purchase register, ageing, variance
-alert list, owner dashboard).
+P9 is done (README, design note, demo script, demo-blocking UI fixes). Start the FRONTEND UPGRADE on branch
+feat/ui-pouch-process. Hard rules: same screens, same flows, same API calls and payloads; no backend
+change; no hard-coded or mock data; benchmark and all tests stay green; plain JS, no heavy libraries.
+Design direction C "Pouch & Process" (approved): palette turmeric #E8A317, chilli #C8361D (flags/errors),
+curry leaf #2F6B3A (ok/synced), chocolate #3B2416 (ink), ghee cream #FFF6E3 (salesman), paper #FFFDF8
+(admin/auditor); type Bricolage Grotesque (display) + Hind Madurai (body), self-hosted; original inline
+SVG snack and material illustrations; CSS-only motion that reflects real state, off under
+prefers-reduced-motion. Order: 1) DESIGN.md + tokens/fonts/app shell, 2) salesman order screen (steppers,
+illustrated product cards from the real price list, sticky order bar, sync status), 3) production
+(BOM/material illustrations, planned-vs-actual SVG bars, yield, cost breakdown, a process line driven by
+run status), 4) admin, 5) auditor/owner (show kg/l and ₹ instead of g/ml/paise in the stock summary).
+Verify each screen in the browser (mobile 390 px for salesman), re-drive the benchmark scenario through
+the UI, then a design critique. Commit per screen; /update-docs-and-commit; ask before pushing.
 ```

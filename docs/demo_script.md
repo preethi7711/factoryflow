@@ -54,5 +54,9 @@ overheads divided by good output."
 
 ## Before recording
 - [ ] Fresh seed (or a new DB). The steps above assume no earlier orders or runs.
+- [ ] Put the salesman in a **separate browser or an incognito window**: logins in one browser
+      profile share storage, so logging in as `salesman_b` there would sign the admin tab out.
+- [ ] **Don't reload the admin tab between steps 5 and 7.** The raised invoice is held in that page
+      (known gap), and the payment box needs it.
 - [ ] Live site: open it a minute early so the cold start doesn't appear in the video.
 - [ ] Browser zoom at 110–125% so the numbers are readable.

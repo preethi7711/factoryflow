@@ -286,3 +286,55 @@ The `ledger-auditor` confirmed three defects before P5 merged (17-test guard sui
   order. Fix: `_replay` checks the key's owner.
 The lesson: as-of and current are *different* invariants — a safe historical ledger needs the running balance
 to stay non-negative at **every** date, not just the latest.
+
+## P6: Payments and outstanding (the benchmark gate)
+
+### What it is
+- Money received from a customer, **allocated** to their invoices. "Outstanding" (what they still owe) is
+  computed from invoices and payments on demand, not stored.
+- Landing P6 turns the whole PROBLEM §5 benchmark green, so the scope gate in CLAUDE.md opens.
+
+### The 3 files that matter
+1. `backend/app/payments/service.py`: `record_payment` (allocation + the over-allocation lock) and
+   `customer_outstanding` (the derived balance).
+2. `backend/app/payments/models.py`: `payment` and `payment_allocation` (append-only).
+3. `backend/tests/integration/test_payments.py` + `tests/audit/test_p6_payments_audit.py`.
+
+### One trace: `POST /api/v1/payments` (step 7 of the benchmark)
+`require_roles(admin)` → load the customer → allocations must sum to the amount (else 422) → no duplicate
+invoice → `SELECT … FOR UPDATE` the allocated invoices → for each: it belongs to the customer, is not
+cancelled, and already-allocated + this ≤ its total (else 409 `OVER_ALLOCATION`) → insert the payment and its
+allocations → audit → one commit. Then `GET /customers/1/outstanding` returns 7875 − 4000 = **3875** (B11).
+
+### Five likely questions
+1. **How is outstanding derived, and why not store it?** `invoice.total − SUM(allocations)` over non-cancelled
+   invoices. Storing a running balance would be a second source of truth that can drift from the payments; a
+   `SUM()` on read can't. Same principle as stock = `SUM(ledger)`.
+2. **How do you stop two payments from over-paying one invoice at once?** The invoice row is locked
+   `FOR UPDATE` before the check, so a concurrent payment to it waits, then re-reads the committed allocations
+   and sees there's no room left — the loser gets 409, not a double payment. (Proven by a threaded audit test.)
+3. **Why do payments post nothing to the stock ledger?** The ledger is about *stock*. Money owed is a
+   different fact, derived from invoices and payments. Keeping them separate means a payment can never
+   accidentally move inventory, and the stock invariants are untouched by cash.
+4. **What happens to a payment if its invoice is later cancelled?** The cancelled invoice drops out of
+   outstanding, and paying a cancelled invoice is refused up front. (Refunding an already-paid, then-cancelled
+   invoice is future work, not in the prototype.)
+5. **What makes this the "benchmark gate"?** B11 needs the payment (step 7) and B13's cost needs the overheads
+   (step 8, which only runs once step 7 passes). With payments in, every B-check passes, so CLAUDE.md's rule
+   "nothing beyond the must-have tier until the benchmark passes" is satisfied.
+
+Bonus: **One thing the audit flagged.** `POST /payments` has no `Idempotency-Key`, so a retry posts a second
+receipt. It can't drift money (the over-allocation cap holds), but it's worth adding in P8 alongside the
+offline queue — the same `Idempotency-Key` machinery orders already use.
+
+### Practice change (do it alone)
+Add a **61–90 day ageing bucket** to `GET /customers/{id}/outstanding`: group each invoice's outstanding by
+how old it is (0–30, 31–60, 61–90, 90+) relative to a `?as_of=` date, and return the bucket totals. Add a test
+with invoices dated across the boundaries.
+
+### P6 hardening (what the hostile audit found)
+The `ledger-auditor` wrote 21 tests and confirmed **no** break — every money-integrity control held. The one
+worth recounting is the concurrency guard: two payments racing to pay the same invoice in full are serialised
+by the `FOR UPDATE` lock, so exactly one commits and the committed sum of allocations equals the invoice total,
+never twice it. The lesson: the moment a check reads-then-writes a shared total, a row lock (not just the
+application check) is what makes it safe under concurrency.

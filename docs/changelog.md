@@ -6,6 +6,25 @@ Each milestone adds a section. Commit hashes are in `git log`.
 ## [Unreleased]
 
 ### Added
+- P6 `payments`: `POST /payments` (admin) — record a receipt and allocate it to the customer's invoices
+  in one transaction. Validates allocations sum to the amount, rejects a duplicate invoice, a non-positive
+  amount, a cancelled invoice, an invoice of another customer, and over-allocation (allocated + new >
+  invoice total, 409), checked under a `FOR UPDATE` row lock so concurrent payments to one invoice can't
+  both slip past. `GET /customers/{id}/outstanding` (admin/auditor/owner): outstanding is **derived** —
+  invoice total − SUM(allocations) over non-cancelled invoices, with a per-invoice breakdown. Payments post
+  nothing to the stock ledger. `payment` and `payment_allocation` are append-only at the DB.
+- **Benchmark gate reached:** removing the B11 and B13 xfail markers makes scenario steps 7–8 reachable, so
+  `pytest -m benchmark` is now entirely green (B1–B13 + salesman-403 + the ledger invariants). B11 outstanding
+  ₹3,875; B13 cost ₹31.14 now asserted through the full scenario.
+- `ledger-auditor` P6 hostile audit suite in `tests/audit/` (21 guards; no break confirmed).
+
+### Known
+- `POST /payments` has no `Idempotency-Key` yet, so a retry posts a second receipt; it cannot drift money
+  (over-allocation caps the committed sum at the invoice total). Deferred to P8 with the offline queue.
+
+## P5 sales, billing (invoice, dispatch, credit notes)
+
+### Added
 - P5 `sales`: `POST /orders` (salesman/admin), each line priced by the server from the price list;
   idempotent via the `Idempotency-Key` header (stored as `sales_order.client_uuid` UNIQUE plus an
   `idempotency_key` table — same key + same body replays, different body → 409). `GET /orders` and

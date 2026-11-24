@@ -2,7 +2,7 @@
 
 _Last updated: 2026-11-24_
 
-## Current phase: P5 done (ledger-audited). Next: **P6 payments, outstanding (benchmark gate)**
+## Current phase: P6 done — **benchmark gate GREEN** (ledger-audited). Next: **P7 reports + invoice PDF**
 
 **Live:** https://factoryflow-icdx.onrender.com (Render Free, Singapore, auto-deploys from `main`; Neon Free DB).
 Verified 2026-11-23 (P3): `/api/v1/health` → `{"status":"ok","db":"ok"}`, `/` serves the placeholder page,
@@ -17,8 +17,9 @@ P3 migration applied on Neon. First deploy failed because Render's **Root Direct
 | P3 | Auth/RBAC, masters, append-only ledger, audit, seed | ✅ done |
 | P4 | Purchases + production runs, variance, overheads, cost; ledger-audited | ✅ done |
 | P5 | Orders (idempotent) → approve + stock check → invoice (GST, FY no.) → dispatch + credit notes; ledger-audited | ✅ done |
-| P6 | Payments + allocation + outstanding (benchmark gate) | ⚪ next |
-| P7–P9 | PDF + reports → frontend + offline queue → README/design note/deploy | ⚪ |
+| P6 | Payments + allocation + outstanding — **benchmark gate GREEN**; ledger-audited | ✅ done |
+| P7 | Invoice PDF + reports (registers, stock, production) + CSV/XLSX export | ⚪ next |
+| P8–P9 | Frontend + offline queue → README/design note/deploy | ⚪ |
 | P10–P11 | Should-haves → stretch | ⚪ |
 
 Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_notes.md](interview_notes.md).
@@ -64,23 +65,30 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
   as-of-date one, so a backdated out-of-order dispatch can't drive a lot negative; the idempotency
   double-tap replays for the loser (guard wraps the flush); replay is scoped to the key's owner.
   17-test P5 audit suite in `tests/audit/` guards it.
+- P6: a payment allocates to invoices in one transaction; over-allocation is checked under a
+  `FOR UPDATE` lock on each invoice, so concurrent payments can't both exceed the total. Outstanding
+  is **derived** (invoice total − SUM(allocations) over non-cancelled invoices), never stored.
+  Payments post nothing to the ledger. `payment`/`payment_allocation` are append-only at the DB.
+- P6 is the **benchmark gate**: `pytest -m benchmark` is fully green (B1–B13 + salesman-403 +
+  invariants). The ledger-auditor confirmed no P6 break (21 guards). Known gap: `POST /payments` has
+  no idempotency key yet (can't drift money; deferred to P8 with the offline queue).
 
 ## Open issues
 - Hours/day unconfirmed (assumed ~6, H1).
-- After pushing P5, confirm the Render deploy is live and the two new migrations (`211c1ab490c2` sales,
-  `c2c35bc2ef1c` billing) applied on Neon.
+- P5 is pushed (Render redeploying). After pushing P6, confirm the deploy is live and the three new
+  migrations (`211c1ab490c2` sales, `c2c35bc2ef1c` billing, `7594a71dfb10` payments) applied on Neon.
 - Render: Health Check Path is still empty; set it to `/api/v1/health` in the dashboard (optional, recommended).
 - Live DB: migrations run on every deploy, but Neon is **not seeded**, so the live site has no logins yet.
   Decide by P8: run `python -m app.seed` against Neon from a local shell, or seed at startup behind an env flag.
-- **B11 and B13 stay xfail until P6:** the scenario now runs through step 6 and stops at step 7
-  (`POST /payments`). B11 (outstanding) needs step 7; B13 (cost) needs step 8 (overheads), which follows it.
-  ₹31.14 is already proven by `tests/integration/test_production.py::test_b13_*`. Remove both xfail markers
-  in the commit that makes steps 7–8 reachable (P6).
+- **Benchmark gate is green** (`pytest -m benchmark`, no xfail left). The scenario now runs through step 8
+  (payment, overheads, cost) and stops at step 9 (`/reports/*`, P7); no benchmark check depends on step 9.
+- `POST /payments` has no `Idempotency-Key` yet, so a retry posts a second receipt (it can't drift money —
+  over-allocation caps the committed sum at the invoice total). Add it in P8 with the offline queue.
 - WIP gap (no test): materials issued to a run that never completes have left stock and show in no report
   (no work-in-progress account, no **run** reversal yet). Invoice-cancellation reversals landed in P5
   (`post_reversals()`); a run reversal would reuse the same primitive.
-- Not built yet: payments/allocation/outstanding (P6); reports and invoice PDF (P7); the frontend and the
-  offline order queue (P8); edit/deactivate endpoints for masters (create only so far).
+- Not built yet: reports and invoice PDF (P7); the frontend and the offline order queue (P8);
+  edit/deactivate endpoints for masters (create only so far).
 - Every push to `main` redeploys Render (about 1 min), including docs-only pushes.
 - `gh` CLI not installed; pushes use plain git.
 - Two Dockerfiles on purpose: root `Dockerfile` = production (Render); `backend/Dockerfile` = dev (compose,
@@ -89,8 +97,9 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 
 ## Benchmark scoreboard
 
-`pytest -q`: 259 passed, 2 xfailed (2026-11-24). The scenario now runs through step 6 (order, approve,
-invoice, dispatch, Distributor B shortage + tax preview) and stops at step 7 (`POST /payments`, P6).
+`pytest -q`: 290 passed, 0 xfailed (2026-11-24). **`pytest -m benchmark` is fully green — the benchmark
+gate is passed.** The scenario runs through step 8 (payment, overheads, cost) and stops at step 9
+(`/reports/*`, P7); no benchmark check depends on step 9.
 
 | Check | Status |
 |---|---|
@@ -99,32 +108,33 @@ invoice, dispatch, Distributor B shortage + tax preview) and stops at step 7 (`P
 | B7 (FG 238 → 88 after dispatch) | ✅ pass |
 | B8, B9, B9b (yield and consumption variance) | ✅ pass |
 | B10, B10b (Retailer A invoice CGST+SGST, number `FF/2026-27/0001`) | ✅ pass |
+| B11 (Retailer A outstanding ₹3,875 after a ₹4,000 payment) | ✅ pass |
 | B12, B12b (Distributor B shortage 32; INTER tax preview IGST 300) | ✅ pass |
+| B13 (cost per packet ₹31.14 through the full scenario) | ✅ pass |
 | Salesman 403 on approve | ✅ pass |
-| B11 outstanding ₹3,875 | ⏳ xfail (needs payment, P6) |
-| B13 cost per packet ₹31.14 | ✅ proven in `test_production.py`; benchmark check xfail until P6 |
-| ledger-auditor P4 / P5 | ✅ books trustworthy (56/56 and 17/17 green) |
+| ledger-auditor P4 / P5 / P6 | ✅ books trustworthy (56 / 17 / 21 guards green) |
 
 ## Next prompt (paste this to start the next session)
 
 ```
 Read CLAUDE.md and docs/project_status.md, then continue.
-Start phase P6 on branch feat/p6-payments, exactly as defined in docs/roadmap.md (~0.5 h). Follow the
-gst-rules skill. Match the request/response shapes in tests/benchmark/test_section5.py steps 7-8 (don't
-change expected numbers). P6 is the benchmark gate: when it lands, pytest -m benchmark must be all green.
-- payments: payment (+ payment_allocation), one transaction, admin-only. POST /payments
-  {customer_id, payment_date, amount_paise, allocations:[{invoice_id, amount_paise}]}. Validate that the
-  allocations sum to the payment amount and that no invoice is over-allocated (allocated <= invoice total
-  across all payments); a cancelled invoice takes no payment. Outstanding is DERIVED, never stored:
-  outstanding = invoice.total - SUM(allocations) for non-cancelled invoices.
-  GET /customers/{id}/outstanding -> {outstanding_paise, (optionally per-invoice + ageing buckets)}.
-  B11: pay 4000.00 against Retailer A's 7875.00 invoice -> outstanding 3875.00 (387500 paise).
-- No stock moves in P6 (payments are money only); post nothing to the ledger. Keep money as integer paise.
-Remove the xfail markers of B11 and B13 in the commit that makes scenario steps 7-8 reachable (step 8
-overheads/cost already exist; they just need step 7 to run first). After this, the scenario reaches step 8
-and stops at step 9 (reports, P7) -> every B-check passes = benchmark gate GREEN.
-Then run the ledger-auditor subagent (new attacks in scope: over-allocation, negative/duplicate allocation,
-paying a cancelled invoice, outstanding vs the sum of allocations) and fix what it confirms.
-Finish with tests and lint green, run the benchmark-check skill to confirm the gate, /update-docs-and-commit,
-merge to main (ask before pushing), the teaching protocol, and an updated next prompt for P7.
+The benchmark gate is already GREEN (pytest -m benchmark all pass); P7 adds deliverables on top, so keep
+every benchmark check green and change no expected number. Start phase P7 on branch feat/p7-reports,
+exactly as defined in docs/roadmap.md (~1.25 h; commit per piece). Follow the stock-ledger and gst-rules
+skills; read, never write, the ledger.
+- reports: GET /reports/sales-register, /reports/stock-summary, /reports/stock-ledger, /reports/production,
+  each taking {from, to} (the benchmark calls all four as the accountant in step 9 with 2026-11-01..30).
+  Read-only for auditor/admin/owner. The stock summary must equal SUM(ledger) per item (opening + receipts
+  - issues +/- adjustments = closing, each ledger row linked to its source doc) and reconcile in a test.
+  CSV + XLSX export (stdlib csv + openpyxl) behind a ?format=csv|xlsx param (M8).
+- invoice PDF (fpdf2 + the bundled DejaVu TTF for the rupee glyph): GET /invoices/{id}/pdf with GSTIN, HSN,
+  taxable value, CGST+SGST or IGST, and the FY number. Generated on request (Render has no disk). Optional
+  wow: a wa.me share link carrying the PDF URL.
+Match the step-9 report paths/params in tests/benchmark/test_section5.py (don't change expected numbers);
+once the four report endpoints exist the scenario runs end to end (step 9 no longer stops it). No xfail
+markers remain to remove. Then run the ledger-auditor subagent (attacks: a report total that disagrees with
+the ledger, an export that drops/duplicates rows, a PDF whose line taxes don't sum to its total) and fix
+what it confirms.
+Finish with tests and lint green, run the benchmark-check skill, /update-docs-and-commit, merge to main
+(ask before pushing), the teaching protocol, and an updated next prompt for P8.
 ```

@@ -408,7 +408,6 @@ def test_b10b_invoice_number_ff_2026_27_0001(sc):
     assert sc.snap["invoice_a"]["invoice_no"] == "FF/2026-27/0001"
 
 
-@NOT_BUILT
 def test_b11_retailer_a_outstanding_3875(sc):
     sc.require(7)
     assert sc.snap["outstanding_a"]["outstanding_paise"] == 387500
@@ -434,7 +433,6 @@ def test_b12b_distributor_b_tax_preview_igst(sc):
     assert p["total_paise"] == 630000
 
 
-@NOT_BUILT
 def test_b13_cost_per_packet_31_14(sc):
     # WAC materials 4,055.00 + overheads 1,800.00 = 5,855.00 / 188 good = 31.1436 -> 31.14
     sc.require(8)

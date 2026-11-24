@@ -6,6 +6,23 @@ Each milestone adds a section. Commit hashes are in `git log`.
 ## [Unreleased]
 
 ### Added
+- P8 frontend (React + Vite + Tailwind + React Router, plain JS; business rules stay in the API): JWT login
+  per role with role-gated routes, and one `fetch` wrapper (`src/api/client.js`: `ApiError`, plus `apiBlob`
+  for the auth-protected PDF/exports).
+- Salesman (mobile-first) order screen priced from the price list for the salesman's own customers, with a
+  **minimal offline queue** (`src/offline/queue.js`): each order carries a `client_uuid` kept in localStorage
+  and sent as the `Idempotency-Key`; it flushes on load and on reconnect, and because the key is stable a
+  retry replays server-side, so a double-send lands exactly one order. Vitest covers the replay.
+- Admin: approval queue → approve (shows the stock shortage) → raise invoice → dispatch → record payment,
+  with a "view invoice PDF" that opens the authed blob. Production: start/complete run + overheads → cost per
+  packet and yield variance. Stock & reports: the stock summary table with CSV/XLSX download buttons.
+- Frontend tooling: ESLint (flat) + Prettier + Vitest; `npm run lint` / `build` / `test`. The salesman order
+  (queue → synced) and the full admin approve→invoice(FF/2026-27/0001)→dispatch→payment flow were verified in
+  a browser against the seeded dev DB. No backend behaviour changed.
+
+## P7 reports, invoice PDF
+
+### Added
 - P7 `reports` (read-only; auditor/admin/owner): `GET /reports/{sales-register,stock-summary,stock-ledger,
   production}` with `{from,to}`. A uniform envelope (columns + rows + totals) renders as JSON, or as CSV
   (stdlib `csv`, utf-8-sig) or XLSX (openpyxl) behind `?format=`. The stock summary reconciles to the ledger

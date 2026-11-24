@@ -386,3 +386,52 @@ ledger and the invoices, and nothing was dropped, duplicated or mis-bucketed (it
 cancelled in the same period — gross issue + reversal adjustment, closing still exact). The lesson: a report is
 trustworthy when it's *derived from* the system of record by a provable identity, not re-aggregated into a
 second copy that can drift.
+
+## P8: The thin frontend and the offline order queue
+
+### What it is
+- A small plain-JS React app over the same API. It's deliberately **thin**: it collects input and shows
+  results; every rule (pricing, tax, stock) stays in the API. The headline is the salesman's offline order
+  queue — place orders with no signal, they sync when the connection returns, and none double up.
+
+### The 3 files that matter
+1. `frontend/src/offline/queue.js`: the localStorage queue (enqueue, flush, pending).
+2. `frontend/src/api/client.js`: the one fetch wrapper (JWT + ApiError + `apiBlob`).
+3. `frontend/src/pages/OrderPage.jsx`: the salesman screen that uses both.
+
+### One trace: a salesman places an order on a dead connection
+`enqueue(body)` stores `{client_uuid: randomUUID(), body, state:"pending"}` in localStorage → the UI shows it
+"pending" → on load and on the browser's `online` event, `flush()` POSTs each pending order to `/orders` with
+`Idempotency-Key = client_uuid` → the server creates it once and, on any retry of the same key, replays the
+first result → the item flips to "synced · #id". The order lands exactly once however many times we retry.
+
+### Five likely questions
+1. **How does offline sync avoid duplicate orders?** Each queued order has a stable `client_uuid` used as the
+   `Idempotency-Key`. The server stores it (UNIQUE `client_uuid` + `idempotency_key`) and replays the first
+   result for that key, so the client can retry as often as it likes — a dropped reply after a successful
+   commit still resolves to one order. The dedupe is the server's job; the client just keeps the key stable.
+2. **Why is the frontend thin?** One source of truth. If the client computed prices or tax, a second
+   implementation could drift from the API and from the other clients. The server re-prices every order from
+   the price list, so the phone can't set its own price; the UI only gathers input and renders answers.
+3. **How does auth work in the SPA?** `/auth/login` returns a JWT; it's kept in localStorage and the fetch
+   wrapper adds `Authorization: Bearer`. Routes are role-gated for UX, but that's only a convenience — the
+   server re-checks the role from the DB on every request, so hiding a button is never the real control.
+4. **Why fetch the PDF and exports as a blob, not a link?** Those endpoints need the Bearer token, and a
+   plain `<a href>` can't send a header. `apiBlob` fetches the bytes with the token and hands back a Blob the
+   page opens (PDF) or downloads (CSV/XLSX).
+5. **What's "minimal" about the queue?** It's localStorage + the online/offline events + idempotent replay —
+   no service worker caching the app shell yet. The hard part (never losing or duplicating an order) is done;
+   a full installable PWA shell is the next polish.
+
+Bonus: a dev/prod-parity lesson from building this — `docker compose up` doesn't run migrations (only the
+production image does on boot), so the dev DB lagged and a payment 500'd until `alembic upgrade head`. Dev and
+prod should migrate the same way; the README now spells out the local step.
+
+### Practice change (do it alone)
+Add a **"pending sync" badge** to the nav bar (not just the order page): a small count of queued-but-unsynced
+orders that any screen shows, updated when the queue flushes. It makes the offline state visible everywhere.
+
+### P8 verification
+No hostile audit — the frontend holds no ledger logic (the server enforces everything). It's covered by a
+Vitest offline-replay test (same key twice → one order) and a browser run of the salesman order and the full
+admin approve→invoice→dispatch→payment flow against the seeded dev database.

@@ -11,7 +11,11 @@ const today = () => localToday();
 export default function OrderPage() {
   const { auth } = useAuth();
   const token = auth.token;
-  const queue = useMemo(() => makeQueue(window.localStorage), []);
+  // One queue per salesman, so a shared phone (or the demo browser) never sends A's order as B.
+  const queue = useMemo(
+    () => makeQueue(window.localStorage, `ff.order.queue.${auth.username}`),
+    [auth.username],
+  );
 
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);

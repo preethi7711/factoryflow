@@ -1,25 +1,27 @@
-// A few shared bits so the pages stay short. Tailwind classes only.
+// Shared building blocks so pages stay short. Colours and fonts come from tailwind.config.js tokens.
+
+const BUTTON = {
+  primary: "bg-choc-900 text-cream hover:bg-choc-700",
+  accent: "bg-turmeric-500 text-choc-900 hover:bg-turmeric-300",
+  ghost: "bg-paper text-choc-900 border border-line hover:bg-cream",
+  danger: "bg-chilli-500 text-paper hover:bg-chilli-700",
+};
 
 export function Button({ className = "", variant = "primary", ...props }) {
-  const styles = {
-    primary: "bg-indigo-600 text-white hover:bg-indigo-700",
-    ghost: "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50",
-    danger: "bg-rose-600 text-white hover:bg-rose-700",
-  };
   return (
     <button
-      className={`rounded-md px-3 py-2 text-sm font-medium disabled:opacity-50 ${styles[variant]} ${className}`}
+      className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${BUTTON[variant]} ${className}`}
       {...props}
     />
   );
 }
 
-export function Card({ title, children, actions }) {
+export function Card({ title, children, actions, className = "" }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <section className={`rounded-2xl border border-line bg-paper p-4 sm:p-5 ${className}`}>
       {(title || actions) && (
-        <div className="mb-3 flex items-center justify-between">
-          {title && <h2 className="text-base font-semibold">{title}</h2>}
+        <div className="mb-3 flex items-center justify-between gap-3">
+          {title && <h2 className="text-lg font-semibold">{title}</h2>}
           {actions}
         </div>
       )}
@@ -28,15 +30,19 @@ export function Card({ title, children, actions }) {
   );
 }
 
+const BANNER = {
+  error: "bg-chilli-50 text-chilli-700 border-chilli-100",
+  success: "bg-leaf-50 text-leaf-700 border-leaf-100",
+  info: "bg-turmeric-50 text-choc-700 border-turmeric-100",
+};
+
 export function Banner({ kind = "error", children }) {
   if (!children) return null;
-  const styles = {
-    error: "bg-rose-50 text-rose-800 border-rose-200",
-    success: "bg-emerald-50 text-emerald-800 border-emerald-200",
-    info: "bg-sky-50 text-sky-800 border-sky-200",
-  };
   return (
-    <div className={`rounded-md border px-3 py-2 text-sm ${styles[kind]}`} role="status">
+    <div
+      className={`animate-fade-in rounded-xl border px-3 py-2 text-sm ${BANNER[kind]}`}
+      role="status"
+    >
       {children}
     </div>
   );
@@ -45,11 +51,27 @@ export function Banner({ kind = "error", children }) {
 export function Field({ label, children }) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block font-medium text-slate-700">{label}</span>
+      <span className="mb-1 block font-medium text-choc-700">{label}</span>
       {children}
     </label>
   );
 }
 
+// A status word in a coloured pill. `tone` picks the colour; the text always says the status.
+const PILL = {
+  wait: "bg-turmeric-100 text-choc-900",
+  ok: "bg-leaf-100 text-leaf-700",
+  bad: "bg-chilli-100 text-chilli-700",
+  muted: "bg-choc-100 text-choc-700",
+};
+
+export function Pill({ tone = "muted", children }) {
+  return (
+    <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${PILL[tone]}`}>
+      {children}
+    </span>
+  );
+}
+
 export const input =
-  "w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none";
+  "min-h-[44px] w-full rounded-xl border border-line bg-paper px-3 py-2 text-sm text-choc-900 placeholder:text-choc-300 focus:border-turmeric-700 focus:outline-none";

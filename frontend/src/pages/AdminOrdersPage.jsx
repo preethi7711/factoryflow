@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 
 import { api, apiBlob } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { inr } from "../format.js";
+import { inr, localToday } from "../format.js";
 import { Banner, Button, Card } from "../ui.jsx";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localToday();
 
 export default function AdminOrdersPage() {
   const { auth } = useAuth();

@@ -2,13 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 
 import { api, apiBlob } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
+import { localToday } from "../format.js";
 import { Banner, Button, Card, Field, input } from "../ui.jsx";
 
 function monthDefaults() {
   const now = new Date();
   const first = new Date(now.getFullYear(), now.getMonth(), 1);
   const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const iso = (d) => d.toISOString().slice(0, 10);
+  const iso = (d) => localToday(d);
   return [iso(first), iso(last)];
 }
 

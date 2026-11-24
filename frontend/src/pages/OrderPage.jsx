@@ -2,11 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { inr } from "../format.js";
+import { inr, localToday } from "../format.js";
 import { makeQueue } from "../offline/queue.js";
 import { Banner, Button, Card, Field, input } from "../ui.jsx";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localToday();
 
 export default function OrderPage() {
   const { auth } = useAuth();

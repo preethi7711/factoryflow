@@ -1,8 +1,8 @@
 # Project status (session handoff file)
 
-_Last updated: 2026-11-24 (P9)_
+_Last updated: 2026-11-25 (UI upgrade done)_
 
-## Current phase: P9 done — deliverables + demo-blocking UI fixes. Next: **the frontend upgrade (design direction C)**
+## Current phase: UI upgrade done — Pouch & Process redesign. Next: **P10 (should-haves)**
 
 **Live:** https://factoryflow-icdx.onrender.com (Render Free, Singapore, auto-deploys from `main`; Neon Free DB).
 Verified 2026-11-23 (P3): `/api/v1/health` → `{"status":"ok","db":"ok"}`, `/` serves the placeholder page,
@@ -21,8 +21,8 @@ P3 migration applied on Neon. First deploy failed because Render's **Root Direct
 | P7 | Invoice PDF + reports (registers, stock, production) + CSV/XLSX export; ledger-audited | ✅ done |
 | P8 | Frontend (thin): login, salesman mobile order + offline queue, admin/production/stock screens | ✅ done |
 | P9 | README + design note + demo script + UI fixes for benchmark steps 1–3, 6, 7 + seed-on-start | ✅ done, live and seeded |
-| UI | Frontend upgrade, design direction C "Pouch & Process", same flows | ⚪ next |
-| P10–P11 | Should-haves → stretch | ⚪ |
+| UI | Frontend upgrade, design direction C "Pouch & Process", same flows | ✅ done |
+| P10–P11 | Should-haves → stretch | ⚪ next |
 
 Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_notes.md](interview_notes.md).
 
@@ -106,6 +106,17 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
   was final), so purchases failed locally only. Rebuilt the dev schema from the migrations. Rule: if a
   migration file changes after you ran it, reset the dev DB (`DROP SCHEMA public CASCADE` + upgrade + seed).
 
+- UI: design direction C "Pouch & Process". Tokens in `tailwind.config.js`; self-hosted Bricolage Grotesque +
+  Hind Madurai (fontsource, OFL-1.1). Original inline SVGs (`SnackArt.jsx`) keyed to item code/name via regex.
+  Motion is state-driven only: process-line pipe dashes while run is DRAFT, packet count pops on change,
+  animations wrapped in `motion-safe:` or the reduced-motion CSS block.
+- UI: `memory.js` localStorage helpers (`remember`/`recall`, try/catch) used for the last run id
+  (`ff.run.{username}`) and invoice map (`ff.invoices`), so the production and admin pages survive a reload.
+- UI: `showQty(qty, uom)` in `format.js` converts base units (g→kg, ml→l) for display; the stock summary
+  shows human units and ₹ values while downloads keep the raw base-unit numbers.
+- UI: single-product price list uses `grid-cols-1`; nav pills are `whitespace-nowrap`; stock table uses
+  `min-w-max` inside `overflow-x-auto` for correct horizontal scroll on mobile.
+
 ## Open issues
 - **Live site seeded and verified 2026-11-24:** P9 deployed (new bundle served), `SEED_ON_START=1` and
   `SEED_DEMO_PASSWORD=factoryflow-demo` set on Render, `admin` login confirmed by the user. Optional: set
@@ -118,8 +129,8 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 - **Local dev gotcha:** `docker compose up` does NOT run migrations (only the production image does on start).
   After pulling new migrations, run `docker compose exec api alembic upgrade head` or the dev DB lags — P8's
   browser test hit a 500 because the dev DB was missing the `payment` table until migrated.
-- Admin UI dispatch/payment needs the raised invoice held in session (no list-invoices endpoint); a
-  `GET /invoices?order_id=` (or an `invoice_id` on the order) would make a reload-before-dispatch robust.
+- Admin UI: invoice persistence now survives a reload via `memory.js` (localStorage) + `GET /invoices/{id}`
+  re-read on load; a `GET /invoices?order_id=` filter would handle a different browser too.
 - **Benchmark gate is green** (`pytest -m benchmark`, no xfail left). The scenario now runs through step 8
   (payment, overheads, cost) and stops at step 9 (`/reports/*`, P7); no benchmark check depends on step 9.
 - `POST /payments` has no `Idempotency-Key` yet, so a retry posts a second receipt (it can't drift money —
@@ -127,9 +138,9 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 - WIP gap (no test): materials issued to a run that never completes have left stock and show in no report
   (no work-in-progress account, no **run** reversal yet). Invoice-cancellation reversals landed in P5
   (`post_reversals()`); a run reversal would reuse the same primitive.
-- Demo recording: the admin page holds the raised invoice in memory, so don't reload it between benchmark
-  steps 5 and 7, and use a separate browser/incognito window for the salesman (docs/demo_script.md).
-- Stock summary shows base units (g, ml) and paise; the frontend upgrade should display kg/l and ₹.
+- Demo: the admin page now re-reads the invoice from the server on reload (via `memory.js` + `GET /invoices/{id}`),
+  so a browser reload between steps 5 and 7 is safe. Still use a separate browser for the salesman (docs/demo_script.md).
+- Stock summary now displays kg/l and ₹ via `showQty`/`inr` helpers (fixed in UI upgrade).
 - Not built yet: a service-worker PWA shell (P8 did the
   localStorage queue only); edit/deactivate endpoints for masters (create only so far); payments
   Idempotency-Key; net-sales / GST summary / ageing (P10).
@@ -141,12 +152,7 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 
 ## Benchmark scoreboard
 
-`pytest -q`: 322 passed (2026-11-24, P9). **`pytest -m benchmark`: 19 passed.** P9 changed no backend code
-except the production image's optional seed. Frontend: `npm run test` 8 passed (money/qty/date helpers +
-offline queue), lint and build clean. **All nine benchmark steps were also driven through the UI** on a
-freshly seeded dev DB: ledger closing flour 120000 g, oil 19500 ml, spice 3800 g, pouches 306, cartons 21,
-FG 238 → 88; variance −6.00% / +5.00% flagged, pouches −3.00% not; invoice FF/2026-27/0001 ₹7,875;
-outstanding ₹3,875; Distributor B short 32 with IGST ₹300 preview; cost ₹31.14.
+`pytest -q`: 322 passed (2026-11-24, P9; no backend change in UI). **`pytest -m benchmark`: 19 passed** (re-verified 2026-11-25). Frontend: `npm run test` 9 passed (added `showQty` tests), lint and build clean. **All nine benchmark steps re-verified through the new UI** on the dev DB: flour 120 kg, oil 19.5 l, spice 3.8 kg, pouches 306, cartons 21, FG 238 → 88; variance −6.00% / +5.00% flagged, pouches −3.00% not; invoice FF/2026-27/0001 ₹7,875; outstanding ₹3,875; Distributor B short 32 / IGST ₹300; cost ₹31.14, margin ₹18.86.
 
 | Check | Status |
 |---|---|
@@ -166,17 +172,10 @@ outstanding ₹3,875; Distributor B short 32 with IGST ₹300 preview; cost ₹3
 
 ```
 Read CLAUDE.md and docs/project_status.md, then continue.
-P9 is done (README, design note, demo script, demo-blocking UI fixes). Start the FRONTEND UPGRADE on branch
-feat/ui-pouch-process. Hard rules: same screens, same flows, same API calls and payloads; no backend
-change; no hard-coded or mock data; benchmark and all tests stay green; plain JS, no heavy libraries.
-Design direction C "Pouch & Process" (approved): palette turmeric #E8A317, chilli #C8361D (flags/errors),
-curry leaf #2F6B3A (ok/synced), chocolate #3B2416 (ink), ghee cream #FFF6E3 (salesman), paper #FFFDF8
-(admin/auditor); type Bricolage Grotesque (display) + Hind Madurai (body), self-hosted; original inline
-SVG snack and material illustrations; CSS-only motion that reflects real state, off under
-prefers-reduced-motion. Order: 1) DESIGN.md + tokens/fonts/app shell, 2) salesman order screen (steppers,
-illustrated product cards from the real price list, sticky order bar, sync status), 3) production
-(BOM/material illustrations, planned-vs-actual SVG bars, yield, cost breakdown, a process line driven by
-run status), 4) admin, 5) auditor/owner (show kg/l and ₹ instead of g/ml/paise in the stock summary).
-Verify each screen in the browser (mobile 390 px for salesman), re-drive the benchmark scenario through
-the UI, then a design critique. Commit per screen; /update-docs-and-commit; ask before pushing.
+UI upgrade (design direction C "Pouch & Process") is done on branch feat/ui-pouch-process. The branch
+has not been pushed yet — ask the user whether to push and merge to main first.
+Then start P10 (should-haves). Prioritise: S4 GST summary (GSTR-1 B2B + HSN rows, 3B 3.1a totals),
+S2 payments register + ageing, S6 owner dashboard (key metrics from existing endpoints). No backend
+schema changes needed for these — they are read-only report endpoints and a dashboard page.
+Hard rules: benchmark stays green; no paid services; ask before pushing.
 ```

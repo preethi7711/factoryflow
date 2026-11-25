@@ -6,6 +6,7 @@ import PurchaseCard from "../components/PurchaseCard.jsx";
 import { CostBreakdown, ProcessLine, VarianceBars } from "../components/RunVisuals.jsx";
 import ItemArt from "../components/SnackArt.jsx";
 import { DISPLAY_UNIT, decMul, localToday, toPaise } from "../format.js";
+import { recall, remember } from "../memory.js";
 import { Banner, Button, Card, Field, input } from "../ui.jsx";
 
 // A run is two API calls (docs/architecture.md section 5):
@@ -30,6 +31,7 @@ const validQty = (s) => /^\d+(\.\d+)?$/.test(String(s).trim());
 export default function ProductionPage() {
   const { auth } = useAuth();
   const token = auth.token;
+  const runKey = `ff.run.${auth.username}`; // the last run this supervisor worked on
   const [boms, setBoms] = useState([]);
   const [itemsById, setItemsById] = useState({}); // item_id -> item (kind, name, sale price)
   const [bomId, setBomId] = useState("");
@@ -74,6 +76,21 @@ export default function ProductionPage() {
     [token],
   );
 
+  // Coming back after a reload or a fresh login: re-read the last run from the server, so its output,
+  // overheads (benchmark step 8) and variance are still reachable.
+  useEffect(() => {
+    const id = recall(runKey, null);
+    if (!id) return;
+    api(`/production-runs/${id}`, { token })
+      .then(async (r) => {
+        setRun(r);
+        setBomId(String(r.bom_id));
+        setBatches(decMul(r.batches, "1"));
+        if (r.status === "COMPLETED") await refresh(r.id);
+      })
+      .catch(() => remember(runKey, null));
+  }, [token, runKey, refresh]);
+
   async function guard(fn) {
     setError("");
     try {
@@ -94,6 +111,7 @@ export default function ProductionPage() {
         body: { bom_id: bom.id, batches: String(batches).trim(), run_date: localToday(), issues },
       });
       setRun(created);
+      remember(runKey, created.id);
       setIssued({});
       setCost(null);
       setVariance(null);

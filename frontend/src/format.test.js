@@ -38,5 +38,6 @@ describe("showQty", () => {
     expect(showQty("10500.000", "ml")).toBe("10.5 l");
     expect(showQty("120000.000", "g")).toBe("120 kg");
     expect(showQty("194.000", "pcs")).toBe("194 pcs");
+    expect(showQty("-2500.000", "g")).toBe("-2.5 kg");
   });
 });

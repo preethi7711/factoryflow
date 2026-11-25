@@ -55,6 +55,8 @@ export const DISPLAY_UNIT = { g: ["kg", "0.001"], ml: ["l", "0.001"] };
 
 // "10500.000" ml -> "10.5 l", "194.000" pcs -> "194 pcs". Exact string maths; for display only.
 export function showQty(qty, uom) {
+  const text = String(qty);
+  if (text.startsWith("-")) return `-${showQty(text.slice(1), uom)}`; // e.g. a negative adjustment
   const [unit, factor] = DISPLAY_UNIT[uom] || [uom, "1"];
-  return `${decMul(qty, factor)} ${unit}`;
+  return `${decMul(text, factor)} ${unit}`;
 }

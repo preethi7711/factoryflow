@@ -172,9 +172,8 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 
 ```
 Read CLAUDE.md and docs/project_status.md, then continue.
-UI upgrade (design direction C "Pouch & Process") is done on branch feat/ui-pouch-process. The branch
-has not been pushed yet — ask the user whether to push and merge to main first.
-Then start P10 (should-haves). Prioritise: S4 GST summary (GSTR-1 B2B + HSN rows, 3B 3.1a totals),
+UI upgrade (design direction C "Pouch & Process") is merged to main and live on Render.
+Start P10 (should-haves). Prioritise: S4 GST summary (GSTR-1 B2B + HSN rows, 3B 3.1a totals),
 S2 payments register + ageing, S6 owner dashboard (key metrics from existing endpoints). No backend
 schema changes needed for these — they are read-only report endpoints and a dashboard page.
 Hard rules: benchmark stays green; no paid services; ask before pushing.

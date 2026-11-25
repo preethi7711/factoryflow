@@ -1,7 +1,47 @@
+/* Self-hosted fonts (OFL-1.1): no Google request, so they also work offline on the salesman's phone. */
+@import "@fontsource/bricolage-grotesque/600.css";
+@import "@fontsource/bricolage-grotesque/800.css";
+@import "@fontsource/hind-madurai/400.css";
+@import "@fontsource/hind-madurai/500.css";
+@import "@fontsource/hind-madurai/600.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-slate-50 text-slate-900;
+@layer base {
+  body {
+    @apply bg-paper font-sans text-choc-900 antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display tracking-tight;
+  }
+  /* One visible focus style for every control (keyboard users). */
+  :focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-turmeric-700;
+  }
+}
+
+@layer utilities {
+  /* Money and quantities line up in columns. */
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  /* The kolam dot grid used behind the brand band: a real motif, kept faint. */
+  .kolam {
+    background-image: radial-gradient(theme("colors.turmeric.300") 1.2px, transparent 1.3px);
+    background-size: 14px 14px;
+  }
+}
+
+/* Motion is decoration only: switch it off when the device asks for less. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }

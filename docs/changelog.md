@@ -5,6 +5,40 @@ Each milestone adds a section. Commit hashes are in `git log`.
 
 ## [Unreleased]
 
+### Added (UI upgrade — design direction C "Pouch & Process")
+- Design tokens: turmeric / chilli / leaf / choc palette + cream / paper backgrounds in `tailwind.config.js`;
+  keyframes `pop`, `flow`, `fade-in`, `spin-slow`; self-hosted Bricolage Grotesque + Hind Madurai (fontsource).
+- `SnackArt.jsx`: original inline SVGs for murukku, mixture, chips, flour, oil, spice, pouch, carton + sack
+  fallback; `artFor()` keyed to item code/name via regex; `Logo` component used in header and login.
+- `Layout.jsx`: sticky header with Logo + wordmark, role nav pills (turmeric-100 when active), `whitespace-nowrap`
+  to prevent pill wrap on mobile; `max-w-lg` for salesman (cream bg), `max-w-5xl` for desk roles (paper bg).
+- `LoginPage.jsx`: cream background, turmeric kolam strip, logo, tagline.
+- `OrderPage.jsx`: turmeric welcome strip with kolam overlay and slow-spinning murukku (`motion-safe`);
+  customer radio chips; illustrated `ProductCard` (ItemArt, price+GST%, −/+/input step buttons, +10 shortcut);
+  `grid-cols-1` for single-product lists; sticky `OrderBar`; `Timeline` progress rail; `QueueList`;
+  "Sales by customer" summary from server orders.
+- `RunVisuals.jsx` (`ProcessLine`, `VarianceBars`, `CostBreakdown`): process line with animated SVG pipe dashes
+  while run is DRAFT; planned vs actual bars in leaf/chilli with flagging text; stacked cost bar + dark panel
+  showing cost per packet and margin.
+- `ProductionPage.jsx`: full redesign with ItemArt in `QtyTable`, item names instead of codes, `ProcessLine`
+  at the top, variance and overheads cards in a grid after completion, run re-read from server on login via
+  `memory.js` (`ff.run.{username}`).
+- `AdminOrdersPage.jsx`: `Pill` status badges, ItemArt per order line, invoice persistence via `memory.js`
+  (`ff.invoices`) + `GET /invoices/{id}` re-read on load.
+- `StockPage.jsx`: `showQty`/`inr` formatting (kg/l and ₹), ItemArt beside item code, right-aligned numeric
+  columns, `min-w-max` on table for correct horizontal scroll on mobile.
+- `memory.js`: `remember`/`recall` localStorage helpers (try/catch wrapped).
+- `format.js`: `showQty(qty, uom)` converts g→kg, ml→l; negative-sign handled before conversion.
+- `docs/DESIGN.md`: palette, type, layout per role, illustration rules, motion rules, accessibility,
+  component inventory, known gaps.
+
+### Fixed (UI upgrade)
+- Stock summary now shows kg / l and ₹ instead of raw g / ml / paise.
+- Admin invoice re-read from server on page reload; a page reload between dispatch and payment no longer
+  loses the invoice.
+- Nav pills no longer wrap on narrow viewports.
+- Stock table scrolls horizontally on mobile instead of squashing column widths.
+
 ### Added (P9)
 - `README.md`, `docs/design_note.md`, `docs/demo_script.md` (deliverables 2–4).
 - Production screen: purchase card (benchmark step 1); editable raw issues at start, packaging used +

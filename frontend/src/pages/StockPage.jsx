@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { api, apiBlob } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { localToday } from "../format.js";
+import ItemArt from "../components/SnackArt.jsx";
+import { DISPLAY_UNIT, inr, localToday, showQty } from "../format.js";
 import { Banner, Button, Card, Field, input } from "../ui.jsx";
 
 function monthDefaults() {
@@ -12,6 +13,19 @@ function monthDefaults() {
   const iso = (d) => localToday(d);
   return [iso(first), iso(last)];
 }
+
+// Report cells arrive exactly as the ledger stores them (base units, paise). Show kg / l and rupees;
+// the downloads keep the raw values so an auditor can re-add them.
+function cell(key, row) {
+  const v = row[key];
+  if (v == null) return "";
+  if (key.endsWith("_paise")) return inr(Number(v));
+  if (key.endsWith("_qty")) return showQty(v, row.uom).split(" ")[0];
+  if (key === "uom") return (DISPLAY_UNIT[v] || [v])[0];
+  return v;
+}
+const label = (text) => text.replace(" (paise)", "");
+const isNumber = (key) => key.endsWith("_qty") || key.endsWith("_paise");
 
 const REPORTS = [
   ["sales-register", "Sales register"],
@@ -54,7 +68,12 @@ export default function StockPage() {
 
   return (
     <>
-      <h1 className="text-xl font-semibold">Stock &amp; reports</h1>
+      <div>
+        <h1 className="text-3xl font-extrabold">Stock &amp; reports</h1>
+        <p className="text-sm text-choc-500">
+          Every figure is read from the stock ledger for the period you pick. Read-only.
+        </p>
+      </div>
 
       <Card title="Period">
         <div className="flex flex-wrap items-end gap-3">
@@ -83,22 +102,35 @@ export default function StockPage() {
       {summary && (
         <Card title="Stock summary">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="min-w-max text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
+                <tr className="border-b border-line text-left text-choc-500">
                   {summary.columns.map((c) => (
-                    <th key={c.key} className="py-1 pr-3 font-medium">
-                      {c.label}
+                    <th
+                      key={c.key}
+                      className={`py-2 pr-3 font-medium ${isNumber(c.key) ? "text-right" : ""}`}
+                    >
+                      {label(c.label)}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {summary.rows.map((row, i) => (
-                  <tr key={i} className="border-b border-slate-100">
+                  <tr key={i} className="border-b border-line">
                     {summary.columns.map((c) => (
-                      <td key={c.key} className="py-1 pr-3">
-                        {row[c.key]}
+                      <td
+                        key={c.key}
+                        className={`py-2 pr-3 ${isNumber(c.key) ? "num text-right" : ""}`}
+                      >
+                        {c.key === "item_code" ? (
+                          <span className="flex items-center gap-2 font-medium">
+                            <ItemArt code={row.item_code} className="h-7 w-7" />
+                            {row.item_code}
+                          </span>
+                        ) : (
+                          cell(c.key, row)
+                        )}
                       </td>
                     ))}
                   </tr>

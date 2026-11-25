@@ -3,9 +3,12 @@ import { useCallback, useEffect, useState } from "react";
 import { api, apiBlob } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { inr, localToday, toPaise } from "../format.js";
-import { Banner, Button, Card, input } from "../ui.jsx";
+import ItemArt from "../components/SnackArt.jsx";
+import { recall, remember } from "../memory.js";
+import { Banner, Button, Card, Pill, input } from "../ui.jsx";
 
 const today = () => localToday();
+const INVOICE_KEY = "ff.invoices"; // order id -> invoice id, so dispatch/payment survive a reload
 
 // "₹7,500.00 taxable + ₹187.50 CGST + ₹187.50 SGST = ₹7,875.00" (or IGST for another state).
 // Every figure comes from the server's invoice or tax preview; nothing is recomputed here.
@@ -28,7 +31,20 @@ export default function AdminOrdersPage() {
 
   const load = useCallback(async () => {
     try {
-      setOrders(await api("/orders", { token }));
+      const list = await api("/orders", { token });
+      setOrders(list);
+      // Re-read invoices raised earlier from this browser (GET /invoices/{id}); the server is the truth.
+      const known = recall(INVOICE_KEY, {});
+      const found = await Promise.all(
+        list
+          .filter((o) => ["INVOICED", "DISPATCHED"].includes(o.status) && known[o.id])
+          .map((o) =>
+            api(`/invoices/${known[o.id]}`, { token })
+              .then((inv) => [o.id, inv])
+              .catch(() => null),
+          ),
+      );
+      setInvoices((m) => ({ ...Object.fromEntries(found.filter(Boolean)), ...m }));
     } catch (err) {
       setError(err.message);
     }
@@ -72,6 +88,7 @@ export default function AdminOrdersPage() {
         body: { invoice_date: today() },
       });
       setInvoices((m) => ({ ...m, [o.id]: inv }));
+      remember(INVOICE_KEY, { ...recall(INVOICE_KEY, {}), [o.id]: inv.id });
       note(o.id, "success", `Invoice ${inv.invoice_no} raised: ${taxLine(inv)}.`);
     });
 
@@ -117,9 +134,14 @@ export default function AdminOrdersPage() {
 
   return (
     <>
-      <h1 className="text-xl font-semibold">Orders</h1>
+      <div>
+        <h1 className="text-3xl font-extrabold">Billing desk</h1>
+        <p className="text-sm text-choc-500">
+          Approve against stock, raise the GST invoice, dispatch, record payment.
+        </p>
+      </div>
       <Banner>{error}</Banner>
-      {orders.length === 0 && <p className="text-sm text-slate-500">No orders yet.</p>}
+      {orders.length === 0 && <p className="text-sm text-choc-500">No orders yet.</p>}
       {orders.map((o) => {
         const inv = invoices[o.id];
         return (
@@ -128,10 +150,16 @@ export default function AdminOrdersPage() {
             title={`${o.customer_code} · order #${o.id}`}
             actions={<Status s={o.status} />}
           >
-            <ul className="mb-3 text-sm text-slate-600">
+            <ul className="mb-3 space-y-1 text-sm text-choc-700">
               {o.lines.map((l) => (
-                <li key={l.id}>
-                  {Number(l.qty)} × {l.item_code} — {inr(l.taxable_paise)}
+                <li key={l.id} className="flex items-center gap-2">
+                  <ItemArt code={l.item_code} className="h-8 w-8" />
+                  <span className="num">
+                    {Number(l.qty)} {l.uom} × {l.item_code} at {inr(l.unit_price_paise)}
+                  </span>
+                  <span className="num ml-auto font-semibold text-choc-900">
+                    {inr(l.taxable_paise)}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -150,7 +178,7 @@ export default function AdminOrdersPage() {
                 <>
                   <input
                     aria-label={`Amount received for ${inv.invoice_no} (₹)`}
-                    className={`${input} w-32`}
+                    className={`${input} !w-40`}
                     inputMode="decimal"
                     placeholder={`₹ of ${inr(inv.total_paise)}`}
                     value={payAmount[o.id] ?? ""}
@@ -163,8 +191,8 @@ export default function AdminOrdersPage() {
                 </>
               )}
               {o.status === "INVOICED" && !inv && (
-                <span className="text-sm text-slate-500">
-                  Invoiced earlier — reopen from this session to dispatch.
+                <span className="text-sm text-choc-500">
+                  This invoice was raised in another browser. Dispatch it from there.
                 </span>
               )}
             </div>
@@ -180,14 +208,9 @@ export default function AdminOrdersPage() {
   );
 }
 
+// Status pill: waiting (turmeric) -> moving (choc) -> done (leaf); cancelled/rejected in chilli.
+const TONE = { PENDING: "wait", APPROVED: "muted", INVOICED: "muted", DISPATCHED: "ok" };
+
 function Status({ s }) {
-  const color =
-    {
-      PENDING: "bg-amber-100 text-amber-800",
-      APPROVED: "bg-sky-100 text-sky-800",
-      INVOICED: "bg-indigo-100 text-indigo-800",
-      DISPATCHED: "bg-emerald-100 text-emerald-800",
-      CANCELLED: "bg-slate-200 text-slate-600",
-    }[s] || "bg-slate-100 text-slate-700";
-  return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${color}`}>{s}</span>;
+  return <Pill tone={TONE[s] || "bad"}>{s.charAt(0) + s.slice(1).toLowerCase()}</Pill>;
 }

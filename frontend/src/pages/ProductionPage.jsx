@@ -3,7 +3,10 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import PurchaseCard from "../components/PurchaseCard.jsx";
-import { DISPLAY_UNIT, decMul, inr, localToday, toPaise } from "../format.js";
+import { CostBreakdown, ProcessLine, VarianceBars } from "../components/RunVisuals.jsx";
+import ItemArt from "../components/SnackArt.jsx";
+import { DISPLAY_UNIT, decMul, localToday, toPaise } from "../format.js";
+import { recall, remember } from "../memory.js";
 import { Banner, Button, Card, Field, input } from "../ui.jsx";
 
 // A run is two API calls (docs/architecture.md section 5):
@@ -28,8 +31,9 @@ const validQty = (s) => /^\d+(\.\d+)?$/.test(String(s).trim());
 export default function ProductionPage() {
   const { auth } = useAuth();
   const token = auth.token;
+  const runKey = `ff.run.${auth.username}`; // the last run this supervisor worked on
   const [boms, setBoms] = useState([]);
-  const [kinds, setKinds] = useState({}); // item_id -> RAW | PACKAGING | FG
+  const [itemsById, setItemsById] = useState({}); // item_id -> item (kind, name, sale price)
   const [bomId, setBomId] = useState("");
   const [batches, setBatches] = useState("1");
   const [issued, setIssued] = useState({}); // item_id -> qty typed at start (raw)
@@ -47,7 +51,7 @@ export default function ProductionPage() {
     Promise.all([api("/boms", { token }), api("/items", { token })])
       .then(([b, items]) => {
         setBoms(b);
-        setKinds(Object.fromEntries(items.map((i) => [i.id, i.kind])));
+        setItemsById(Object.fromEntries(items.map((i) => [i.id, i])));
       })
       .catch((e) => setError(e.message));
   }, [token]);
@@ -55,8 +59,9 @@ export default function ProductionPage() {
   const bom = boms.find((b) => b.id === Number(bomId));
   const okBatches = validQty(batches) && Number(batches) > 0;
   const plan = bom && okBatches ? bom.lines.map((l) => planLine(l, batches)) : [];
-  const raw = plan.filter((l) => kinds[l.item_id] === "RAW");
-  const packaging = plan.filter((l) => kinds[l.item_id] === "PACKAGING");
+  const kindOf = (id) => itemsById[id]?.kind;
+  const raw = plan.filter((l) => kindOf(l.item_id) === "RAW");
+  const packaging = plan.filter((l) => kindOf(l.item_id) === "PACKAGING");
   const qtyOf = (map, l) => (map[l.item_id] ?? l.planned).trim();
 
   const refresh = useCallback(
@@ -70,6 +75,21 @@ export default function ProductionPage() {
     },
     [token],
   );
+
+  // Coming back after a reload or a fresh login: re-read the last run from the server, so its output,
+  // overheads (benchmark step 8) and variance are still reachable.
+  useEffect(() => {
+    const id = recall(runKey, null);
+    if (!id) return;
+    api(`/production-runs/${id}`, { token })
+      .then(async (r) => {
+        setRun(r);
+        setBomId(String(r.bom_id));
+        setBatches(decMul(r.batches, "1"));
+        if (r.status === "COMPLETED") await refresh(r.id);
+      })
+      .catch(() => remember(runKey, null));
+  }, [token, runKey, refresh]);
 
   async function guard(fn) {
     setError("");
@@ -91,6 +111,7 @@ export default function ProductionPage() {
         body: { bom_id: bom.id, batches: String(batches).trim(), run_date: localToday(), issues },
       });
       setRun(created);
+      remember(runKey, created.id);
       setIssued({});
       setCost(null);
       setVariance(null);
@@ -150,60 +171,34 @@ export default function ProductionPage() {
 
   return (
     <>
-      <h1 className="text-xl font-semibold">Production</h1>
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <h1 className="text-3xl font-extrabold">Production floor</h1>
+        {run && (
+          <p className="text-sm text-choc-500">
+            {run.run_no} · {run.item_code} · {Number(run.batches)} batch
+            {Number(run.batches) === 1 ? "" : "es"}
+          </p>
+        )}
+      </div>
+      <ProcessLine run={run} />
       <Banner>{error}</Banner>
-      <PurchaseCard token={token} />
-
-      {!run || run.status === "COMPLETED" ? (
-        <Card title="Start a run">
-          <div className="space-y-3">
-            <Field label="Recipe (BOM)">
-              <select className={input} value={bomId} onChange={(e) => setBomId(e.target.value)}>
-                <option value="">Select a BOM…</option>
-                {boms.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.code} → {b.item_code}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Batches">
-              <input
-                className={input}
-                value={batches}
-                onChange={(e) => setBatches(e.target.value)}
-              />
-            </Field>
-            {raw.length > 0 && (
-              <QtyTable
-                caption="Raw materials issued now (planned is BOM × batches)"
-                lines={raw}
-                cols={[["Issued", issued, setIssued]]}
-              />
-            )}
-            {packaging.length > 0 && (
-              <p className="text-sm text-slate-500">
-                Packaging ({packaging.map((l) => l.code).join(", ")}) is counted when you complete
-                the run.
-              </p>
-            )}
-            <Button disabled={!bom || !okBatches} onClick={start}>
-              Start run (issue raw materials)
-            </Button>
-          </div>
-        </Card>
-      ) : null}
 
       {run && run.status === "DRAFT" && (
         <Card title={`${run.run_no}: record output`}>
           <div className="space-y-3">
-            <Field label={`Good output (pkt) — expected ${Number(run.planned_qty)}`}>
-              <input className={input} value={output} onChange={(e) => setOutput(e.target.value)} />
+            <Field label={`Good packets (expected ${Number(run.planned_qty)})`}>
+              <input
+                className={input}
+                inputMode="numeric"
+                value={output}
+                onChange={(e) => setOutput(e.target.value)}
+              />
             </Field>
             {packaging.length > 0 && (
               <QtyTable
-                caption="Packaging used (including damaged)"
+                caption="Packaging used (damaged ones included)"
                 lines={packaging}
+                itemsById={itemsById}
                 cols={[
                   ["Used", used, setUsed],
                   ["Damaged", damaged, setDamaged, "0"],
@@ -218,42 +213,122 @@ export default function ProductionPage() {
       )}
 
       {run && run.status === "COMPLETED" && (
-        <Card title={`${run.run_no}: variance, overheads & cost`}>
-          {variance && <VarianceTable variance={variance} />}
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <Field label="Labour (₹)">
-              <input className={input} value={labour} onChange={(e) => setLabour(e.target.value)} />
-            </Field>
-            <Field label="Gas / power (₹)">
-              <input className={input} value={power} onChange={(e) => setPower(e.target.value)} />
-            </Field>
-          </div>
-          <Button className="mt-3" variant="ghost" onClick={addOverheads}>
-            Add overheads
-          </Button>
-          {cost && (
-            <dl className="mt-4 grid grid-cols-2 gap-1 text-sm">
-              <dt className="text-slate-500">Material</dt>
-              <dd className="text-right">{inr(cost.material_paise)}</dd>
-              <dt className="text-slate-500">Overhead</dt>
-              <dd className="text-right">{inr(cost.overhead_paise)}</dd>
-              <dt className="font-medium">Cost / packet</dt>
-              <dd className="text-right font-medium">{inr(cost.cost_per_unit_paise)}</dd>
-            </dl>
+        <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
+          {variance && (
+            <Card title={`${run.run_no}: planned vs actual`}>
+              <VarianceBars
+                variance={variance}
+                names={Object.fromEntries(Object.values(itemsById).map((i) => [i.id, i.name]))}
+              />
+              <p className="mt-3 text-xs text-choc-500">
+                Pale bar = recipe plan, solid bar = what the floor used (read from the stock
+                ledger). Red means the difference is beyond the item&apos;s tolerance.
+              </p>
+            </Card>
           )}
-        </Card>
+          {
+            <Card title="Overheads and cost">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Labour (₹)">
+                  <input
+                    className={input}
+                    inputMode="decimal"
+                    value={labour}
+                    onChange={(e) => setLabour(e.target.value)}
+                  />
+                </Field>
+                <Field label="Gas / power (₹)">
+                  <input
+                    className={input}
+                    inputMode="decimal"
+                    value={power}
+                    onChange={(e) => setPower(e.target.value)}
+                  />
+                </Field>
+              </div>
+              <Button className="mt-3" variant="ghost" onClick={addOverheads}>
+                Add overheads
+              </Button>
+              {cost && (
+                <div className="mt-4">
+                  <CostBreakdown
+                    cost={cost}
+                    salePricePaise={itemsById[run.item_id]?.sale_price_paise ?? null}
+                  />
+                </div>
+              )}
+            </Card>
+          }
+        </div>
       )}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {!run || run.status === "COMPLETED" ? (
+          <Card title={run ? "Start the next run" : "Start a run"}>
+            <div className="space-y-3">
+              <div className="grid grid-cols-[1fr_7rem] gap-3">
+                <Field label="Recipe (BOM)">
+                  <select
+                    className={input}
+                    value={bomId}
+                    onChange={(e) => setBomId(e.target.value)}
+                  >
+                    <option value="">Select a recipe…</option>
+                    {boms.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.item_code} ({b.code})
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Batches">
+                  <input
+                    className={input}
+                    inputMode="decimal"
+                    value={batches}
+                    onChange={(e) => setBatches(e.target.value)}
+                  />
+                </Field>
+              </div>
+              {bom && (
+                <p className="text-sm text-choc-500">
+                  One batch should give {Number(bom.output_qty)} {bom.output_uom}.
+                </p>
+              )}
+              {raw.length > 0 && (
+                <QtyTable
+                  caption="Raw materials to issue now (planned = recipe × batches)"
+                  lines={raw}
+                  itemsById={itemsById}
+                  cols={[["Issued", issued, setIssued]]}
+                />
+              )}
+              {packaging.length > 0 && (
+                <p className="text-sm text-choc-500">
+                  Packaging ({packaging.map((l) => itemsById[l.item_id]?.name || l.code).join(", ")}
+                  ) is counted when you complete the run.
+                </p>
+              )}
+              <Button disabled={!bom || !okBatches} onClick={start}>
+                Start run and issue raw materials
+              </Button>
+            </div>
+          </Card>
+        ) : null}
+
+        {(!run || run.status === "COMPLETED") && <PurchaseCard token={token} />}
+      </div>
     </>
   );
 }
 
 // Planned column + one editable column per entry in `cols` ([label, values, setValues, default]).
-function QtyTable({ caption, lines, cols }) {
+function QtyTable({ caption, lines, cols, itemsById }) {
   return (
     <table className="w-full text-sm">
-      <caption className="mb-1 text-left text-slate-500">{caption}</caption>
+      <caption className="mb-1 text-left text-choc-500">{caption}</caption>
       <thead>
-        <tr className="text-left text-slate-500">
+        <tr className="text-left text-choc-500">
           <th className="py-1 font-medium">Item</th>
           <th className="py-1 font-medium">Planned</th>
           {cols.map(([label]) => (
@@ -265,8 +340,13 @@ function QtyTable({ caption, lines, cols }) {
       </thead>
       <tbody>
         {lines.map((l) => (
-          <tr key={l.item_id} className="border-t border-slate-100">
-            <td className="py-1 pr-2">{l.code}</td>
+          <tr key={l.item_id} className="border-t border-line">
+            <td className="py-1 pr-2">
+              <span className="flex items-center gap-2">
+                <ItemArt code={l.code} className="h-8 w-8 shrink-0" />
+                {itemsById[l.item_id]?.name || l.code}
+              </span>
+            </td>
             <td className="py-1 pr-2">
               {l.planned} {l.uom}
             </td>
@@ -281,52 +361,6 @@ function QtyTable({ caption, lines, cols }) {
                 />
               </td>
             ))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-// "10500.000" ml -> "10.5 l"; exact (string maths), display only.
-function show(qty, uom) {
-  const [unit, factor] = DISPLAY_UNIT[uom] || [uom, "1"];
-  return `${decMul(qty, factor)} ${unit}`; // decMul drops trailing zeros: "194.000" -> "194"
-}
-
-const pct = (bp) => `${bp > 0 ? "+" : ""}${(bp / 100).toFixed(2)}%`;
-
-function VarianceTable({ variance }) {
-  const rows = [
-    { code: "Yield (good output)", uom: "pkt", ...variance.yield, damaged_qty: null },
-    ...variance.lines,
-  ];
-  return (
-    <table className="w-full text-sm">
-      <caption className="mb-1 text-left text-slate-500">
-        Planned vs actual (flag beyond tolerance)
-      </caption>
-      <thead>
-        <tr className="text-left text-slate-500">
-          <th className="py-1 font-medium">Item</th>
-          <th className="py-1 font-medium">Planned</th>
-          <th className="py-1 font-medium">Actual</th>
-          <th className="py-1 font-medium">Variance</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={r.item_code || r.code} className="border-t border-slate-100">
-            <td className="py-1 pr-2">{r.item_code || r.code}</td>
-            <td className="py-1 pr-2">{show(r.planned_qty, r.uom)}</td>
-            <td className="py-1 pr-2">
-              {show(r.actual_qty, r.uom)}
-              {Number(r.damaged_qty) > 0 && ` (${show(r.damaged_qty, r.uom)} damaged)`}
-            </td>
-            <td className={`py-1 ${r.flagged ? "font-medium text-rose-600" : "text-emerald-700"}`}>
-              {pct(r.variance_bp)}
-              {r.flagged ? " · flagged" : ""}
-            </td>
           </tr>
         ))}
       </tbody>

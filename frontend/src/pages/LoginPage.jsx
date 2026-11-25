@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext.jsx";
 import { HOME } from "../nav.js";
+import { Logo } from "../components/SnackArt.jsx";
 import { Banner, Button, Field, input } from "../ui.jsx";
 
 export default function LoginPage() {
@@ -28,36 +29,43 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="mx-auto mt-16 max-w-sm px-4">
-      <h1 className="mb-1 text-2xl font-semibold text-indigo-700">FactoryFlow</h1>
-      <p className="mb-6 text-sm text-slate-500">Order-to-audit system. Sign in to continue.</p>
-      <form
-        onSubmit={submit}
-        className="space-y-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
-      >
-        <Field label="Username">
-          <input
-            className={input}
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoFocus
-            autoComplete="username"
-          />
-        </Field>
-        <Field label="Password">
-          <input
-            className={input}
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-          />
-        </Field>
-        <Banner>{error}</Banner>
-        <Button type="submit" disabled={busy || !username || !password} className="w-full">
-          {busy ? "Signing in…" : "Sign in"}
-        </Button>
-      </form>
+    <div className="min-h-screen bg-cream">
+      <div className="kolam h-2 bg-turmeric-500" aria-hidden="true" />
+      <div className="mx-auto max-w-sm px-4 pt-14">
+        <div className="mb-6 flex items-center gap-3">
+          <Logo className="h-12 w-12" />
+          <div>
+            <h1 className="text-3xl font-extrabold">FactoryFlow</h1>
+            <p className="text-sm text-choc-500">
+              From the salesman&apos;s order to the auditor&apos;s report.
+            </p>
+          </div>
+        </div>
+        <form onSubmit={submit} className="space-y-4 rounded-2xl border border-line bg-paper p-5">
+          <Field label="Username">
+            <input
+              className={input}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoFocus
+              autoComplete="username"
+            />
+          </Field>
+          <Field label="Password">
+            <input
+              className={input}
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+          </Field>
+          <Banner>{error}</Banner>
+          <Button type="submit" disabled={busy || !username || !password} className="w-full">
+            {busy ? "Signing in…" : "Sign in"}
+          </Button>
+        </form>
+      </div>
     </div>
   );
 }

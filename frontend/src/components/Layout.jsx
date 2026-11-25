@@ -50,7 +50,7 @@ export default function Layout() {
                   key={to}
                   to={to}
                   className={({ isActive }) =>
-                    `rounded-full px-3 py-1.5 font-medium ${
+                    `whitespace-nowrap rounded-full px-3 py-1.5 font-medium ${
                       isActive
                         ? "bg-turmeric-100 text-choc-900"
                         : "text-choc-500 hover:text-choc-900"

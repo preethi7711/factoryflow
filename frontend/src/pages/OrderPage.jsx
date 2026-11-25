@@ -194,7 +194,7 @@ export default function OrderPage() {
           Price list
         </h2>
         {products.length === 0 && <p className="text-sm text-choc-500">No products loaded yet.</p>}
-        <div className="grid grid-cols-2 gap-3">
+        <div className={`grid gap-3 ${products.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
           {products.map((p) => (
             <ProductCard
               key={p.item_id}

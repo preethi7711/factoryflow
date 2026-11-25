@@ -102,7 +102,7 @@ export default function StockPage() {
       {summary && (
         <Card title="Stock summary">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="min-w-max text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-choc-500">
                   {summary.columns.map((c) => (

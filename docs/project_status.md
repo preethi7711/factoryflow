@@ -204,7 +204,9 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 
 ```
 Read CLAUDE.md and docs/project_status.md, then continue.
-P11 first slice is merged to main and live on Render.
+P11 progress so far is merged to main and live on Render:
+  - purchase register + variance alerts + dashboard banner
+  - payments Idempotency-Key (closes the P8-era gap)
 Pick the next P11 item, in priority order:
   - masters edit/deactivate (small endpoints; UI pages come later)
   - Tally CSV export (one more /reports/ builder)

@@ -225,6 +225,7 @@ P11 progress so far is merged to main and live on Render:
   - purchase register + variance alerts + dashboard banner
   - payments Idempotency-Key (closes the P8-era gap)
   - masters edit/deactivate (migration c932ce0a5ca4: is_active on item, customer, supplier)
+  - Tally day book export (GET /reports/tally-daybook, 11 StockPage tabs)
 Pick the next P11 item, in priority order:
   - UI pages for masters edit/deactivate (API is ready; a thin admin screen would help)
   - service-worker PWA shell (vite-plugin-pwa; cache the app, offline shell)

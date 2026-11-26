@@ -5,6 +5,17 @@ Each milestone adds a section. Commit hashes are in `git log`.
 
 ## [Unreleased]
 
+### Added (P11 stretch — service-worker PWA shell)
+- `vite-plugin-pwa` generates a service worker that precaches the built shell (JS/CSS/fonts/SVGs
+  — 39 entries, ~655 KiB) and a web app manifest, so the app opens offline and can be installed
+  on Android / iOS.
+- `registerType: autoUpdate` ships new versions on the next reload without a prompt.
+- `/api` is explicitly excluded from the service worker — API responses are never cached.
+- Icons come from `public/logo.svg` and `public/maskable-icon.svg` (the turmeric circle + murukku
+  spiral used in the Logo component). Theme colour `#E8A317`, background `#FFFDF8`.
+- `index.html` gains `<meta name="theme-color">` and `apple-touch-icon` for installability.
+- `devOptions.enabled: false` keeps the service worker off in dev (would race with Vite's HMR).
+
 ### Added (P11 stretch — masters admin UI)
 - New `MastersPage` at `/masters` (admin only). Three tabs (Items / Customers / Suppliers) over
   the existing list endpoints; each row opens an inline form that PATCHes editable fields.

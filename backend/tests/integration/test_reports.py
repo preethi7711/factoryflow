@@ -111,7 +111,7 @@ def flow(seeded_db):
                 "amount_paise": 400000,
                 "allocations": [{"invoice_id": inv["id"], "amount_paise": 400000}],
             },
-            headers=admin,
+            headers={**admin, "Idempotency-Key": _key()["Idempotency-Key"]},
         )
         client.post(
             f"{API}/production-runs/{run['id']}/overheads",

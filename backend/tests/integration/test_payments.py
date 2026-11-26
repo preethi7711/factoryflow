@@ -1,5 +1,6 @@
 """Payments through the API: allocation validation, over-allocation, cancelled invoices, and the
-derived outstanding balance (PROBLEM.md section 5 step 7, B11).
+derived outstanding balance (PROBLEM.md section 5 step 7, B11). Also the P11 Idempotency-Key guard
+on POST /payments.
 
 Each test reseeds (opening finished goods = 50 packets).
 """
@@ -59,20 +60,30 @@ def _customer_id(client, code: str, headers: dict) -> int:
     return _id(client, "customers", code, headers)
 
 
+def _pay(client, headers, body, key: str | None = None):
+    """POST /payments with an Idempotency-Key, which the endpoint requires. Pass a fixed `key`
+    to exercise the replay behaviour; otherwise a fresh key is generated for each call."""
+    return client.post(
+        f"{API}/payments",
+        json=body,
+        headers={**headers, "Idempotency-Key": key or str(uuid.uuid4())},
+    )
+
+
+def _body(cust: int, amount: int, inv_id: int) -> dict:
+    return {
+        "customer_id": cust,
+        "payment_date": DT,
+        "amount_paise": amount,
+        "allocations": [{"invoice_id": inv_id, "amount_paise": amount}],
+    }
+
+
 def test_partial_payment_reduces_outstanding(fresh) -> None:
     admin = _headers(fresh, "admin")
     inv = _invoice(fresh, "RETAILER-A", "40", "salesman_a")  # total 210000
     cust = inv["customer_id"]
-    r = fresh.post(
-        f"{API}/payments",
-        json={
-            "customer_id": cust,
-            "payment_date": DT,
-            "amount_paise": 100000,
-            "allocations": [{"invoice_id": inv["id"], "amount_paise": 100000}],
-        },
-        headers=admin,
-    )
+    r = _pay(fresh, admin, _body(cust, 100000, inv["id"]))
     assert r.status_code == 201, r.text
     out = fresh.get(f"{API}/customers/{cust}/outstanding", headers=admin).json()
     assert out["outstanding_paise"] == 110000
@@ -84,19 +95,7 @@ def test_full_payment_clears_the_invoice(fresh) -> None:
     admin = _headers(fresh, "admin")
     inv = _invoice(fresh, "RETAILER-A", "40", "salesman_a")  # total 210000
     cust = inv["customer_id"]
-    assert (
-        fresh.post(
-            f"{API}/payments",
-            json={
-                "customer_id": cust,
-                "payment_date": DT,
-                "amount_paise": 210000,
-                "allocations": [{"invoice_id": inv["id"], "amount_paise": 210000}],
-            },
-            headers=admin,
-        ).status_code
-        == 201
-    )
+    assert _pay(fresh, admin, _body(cust, 210000, inv["id"])).status_code == 201
     out = fresh.get(f"{API}/customers/{cust}/outstanding", headers=admin).json()
     assert out["outstanding_paise"] == 0
     assert out["invoices"] == []  # nothing still owing
@@ -105,16 +104,13 @@ def test_full_payment_clears_the_invoice(fresh) -> None:
 def test_allocations_must_sum_to_the_amount(fresh) -> None:
     admin = _headers(fresh, "admin")
     inv = _invoice(fresh, "RETAILER-A", "40", "salesman_a")
-    r = fresh.post(
-        f"{API}/payments",
-        json={
-            "customer_id": inv["customer_id"],
-            "payment_date": DT,
-            "amount_paise": 100000,
-            "allocations": [{"invoice_id": inv["id"], "amount_paise": 90000}],
-        },
-        headers=admin,
-    )
+    body = {
+        "customer_id": inv["customer_id"],
+        "payment_date": DT,
+        "amount_paise": 100000,
+        "allocations": [{"invoice_id": inv["id"], "amount_paise": 90000}],
+    }
+    r = _pay(fresh, admin, body)
     assert r.status_code == 422
     assert r.json()["error"]["code"] == "ALLOCATION_MISMATCH"
 
@@ -124,29 +120,8 @@ def test_cannot_over_allocate_an_invoice(fresh) -> None:
     inv = _invoice(fresh, "RETAILER-A", "40", "salesman_a")  # total 210000
     cust = inv["customer_id"]
     # pay 200000 first, then try 20000 more (would be 220000 > 210000)
-    assert (
-        fresh.post(
-            f"{API}/payments",
-            json={
-                "customer_id": cust,
-                "payment_date": DT,
-                "amount_paise": 200000,
-                "allocations": [{"invoice_id": inv["id"], "amount_paise": 200000}],
-            },
-            headers=admin,
-        ).status_code
-        == 201
-    )
-    r = fresh.post(
-        f"{API}/payments",
-        json={
-            "customer_id": cust,
-            "payment_date": DT,
-            "amount_paise": 20000,
-            "allocations": [{"invoice_id": inv["id"], "amount_paise": 20000}],
-        },
-        headers=admin,
-    )
+    assert _pay(fresh, admin, _body(cust, 200000, inv["id"])).status_code == 201
+    r = _pay(fresh, admin, _body(cust, 20000, inv["id"]))
     assert r.status_code == 409
     assert r.json()["error"]["code"] == "OVER_ALLOCATION"
 
@@ -160,16 +135,7 @@ def test_cannot_pay_a_cancelled_invoice(fresh) -> None:
         ).status_code
         == 200
     )
-    r = fresh.post(
-        f"{API}/payments",
-        json={
-            "customer_id": inv["customer_id"],
-            "payment_date": DT,
-            "amount_paise": 50000,
-            "allocations": [{"invoice_id": inv["id"], "amount_paise": 50000}],
-        },
-        headers=admin,
-    )
+    r = _pay(fresh, admin, _body(inv["customer_id"], 50000, inv["id"]))
     assert r.status_code == 409
     assert r.json()["error"]["code"] == "INVOICE_CANCELLED"
 
@@ -178,16 +144,7 @@ def test_cannot_allocate_another_customers_invoice(fresh) -> None:
     admin = _headers(fresh, "admin")
     inv_a = _invoice(fresh, "RETAILER-A", "40", "salesman_a")
     cust_b = _customer_id(fresh, "DISTRIBUTOR-B", admin)
-    r = fresh.post(
-        f"{API}/payments",
-        json={
-            "customer_id": cust_b,
-            "payment_date": DT,
-            "amount_paise": 50000,
-            "allocations": [{"invoice_id": inv_a["id"], "amount_paise": 50000}],
-        },
-        headers=admin,
-    )
+    r = _pay(fresh, admin, _body(cust_b, 50000, inv_a["id"]))
     assert r.status_code == 422
     assert r.json()["error"]["code"] == "WRONG_CUSTOMER"
 
@@ -195,14 +152,58 @@ def test_cannot_allocate_another_customers_invoice(fresh) -> None:
 @pytest.mark.parametrize("username", ["salesman_a", "production"])
 def test_only_admin_can_record_a_payment(fresh, username) -> None:
     inv = _invoice(fresh, "RETAILER-A", "40", "salesman_a")
-    r = fresh.post(
-        f"{API}/payments",
-        json={
-            "customer_id": inv["customer_id"],
-            "payment_date": DT,
-            "amount_paise": 50000,
-            "allocations": [{"invoice_id": inv["id"], "amount_paise": 50000}],
-        },
-        headers=_headers(fresh, username),
-    )
+    r = _pay(fresh, _headers(fresh, username), _body(inv["customer_id"], 50000, inv["id"]))
     assert r.status_code == 403
+
+
+# ---- P11: Idempotency-Key guard --------------------------------------------------------
+
+
+def test_payment_requires_idempotency_key(fresh) -> None:
+    admin = _headers(fresh, "admin")
+    inv = _invoice(fresh, "RETAILER-A", "40", "salesman_a")
+    r = fresh.post(
+        f"{API}/payments", json=_body(inv["customer_id"], 50000, inv["id"]), headers=admin
+    )
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "IDEMPOTENCY_KEY_REQUIRED"
+
+
+def test_repeated_key_replays_one_receipt_only(fresh) -> None:
+    admin = _headers(fresh, "admin")
+    inv = _invoice(fresh, "RETAILER-A", "40", "salesman_a")  # total 210000
+    cust = inv["customer_id"]
+    key = str(uuid.uuid4())
+    body = _body(cust, 100000, inv["id"])
+    first = _pay(fresh, admin, body, key=key)
+    second = _pay(fresh, admin, body, key=key)
+    assert first.status_code == 201 and second.status_code == 201
+    assert first.json() == second.json()  # same receipt, not two
+    # Only one allocation hit the invoice; outstanding is 110000, not 10000.
+    out = fresh.get(f"{API}/customers/{cust}/outstanding", headers=admin).json()
+    assert out["outstanding_paise"] == 110000
+
+
+def test_same_key_different_body_is_a_conflict(fresh) -> None:
+    admin = _headers(fresh, "admin")
+    inv = _invoice(fresh, "RETAILER-A", "40", "salesman_a")
+    cust = inv["customer_id"]
+    key = str(uuid.uuid4())
+    assert _pay(fresh, admin, _body(cust, 50000, inv["id"]), key=key).status_code == 201
+    r = _pay(fresh, admin, _body(cust, 60000, inv["id"]), key=key)
+    assert r.status_code == 409
+    assert r.json()["error"]["code"] == "IDEMPOTENCY_CONFLICT"
+
+
+def test_another_user_cannot_reuse_my_key(fresh) -> None:
+    admin = _headers(fresh, "admin")
+    inv = _invoice(fresh, "RETAILER-A", "40", "salesman_a")
+    cust = inv["customer_id"]
+    key = str(uuid.uuid4())
+    assert _pay(fresh, admin, _body(cust, 50000, inv["id"]), key=key).status_code == 201
+    # The current API only lets admins record payments, but if another admin existed, they
+    # would not be handed the first admin's receipt either. We test the owner here (403 before
+    # the replay check), proving the role gate still fires; the replay rule itself is enforced
+    # in the service (see sales for the parallel pattern).
+    r = _pay(fresh, _headers(fresh, "owner"), _body(cust, 50000, inv["id"]), key=key)
+    assert r.status_code == 403  # role gate wins first

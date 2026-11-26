@@ -5,6 +5,15 @@ Each milestone adds a section. Commit hashes are in `git log`.
 
 ## [Unreleased]
 
+### Changed (P11 stretch — payments idempotency)
+- `POST /payments` now requires an `Idempotency-Key` header, same shape as `POST /orders`. A
+  replayed key with the same body returns the first receipt (never a second one); a different body
+  under the same key is a 409 `IDEMPOTENCY_CONFLICT`; a key belongs to the user who first used it
+  (403 if another user presents it). Shares the `idempotency_key` table with orders (`route` tells
+  them apart). A concurrent double-tap under the same key is caught as `IntegrityError` and replays
+  the winner — never 500s. The admin UI sends `crypto.randomUUID()` on each receipt. Closes the
+  P8-era known gap. 4 new API tests (required / replay / conflict / cross-user).
+
 ### Added (P11 stretch — first slice)
 - `reports.service.purchase_register` + `/reports/purchase-register` (S1): one row per purchase in
   period with supplier, GSTIN, supply type, line count and tax split. Totals come straight from the

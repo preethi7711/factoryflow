@@ -20,6 +20,7 @@ htmlcov/
 # --- Node / frontend ---
 node_modules/
 dist/
+dev-dist/
 .vite/
 *.tsbuildinfo
 

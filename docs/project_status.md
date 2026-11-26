@@ -1,8 +1,8 @@
 # Project status (session handoff file)
 
-_Last updated: 2026-11-26 (P11 continued: masters admin UI)_
+_Last updated: 2026-11-26 (P11 continued: service-worker PWA shell)_
 
-## Current phase: P11 in progress — masters admin UI done on top of the earlier P11 slices. Next: **service-worker PWA shell**
+## Current phase: P11 wrapping up — service-worker PWA shell done on top of the earlier P11 slices. Next: **declare P11 done, close out**
 
 **Live:** https://factoryflow-icdx.onrender.com (Render Free, Singapore, auto-deploys from `main`; Neon Free DB).
 Verified 2026-11-23 (P3): `/api/v1/health` → `{"status":"ok","db":"ok"}`, `/` serves the placeholder page,
@@ -23,7 +23,7 @@ P3 migration applied on Neon. First deploy failed because Render's **Root Direct
 | P9 | README + design note + demo script + UI fixes for benchmark steps 1–3, 6, 7 + seed-on-start | ✅ done, live and seeded |
 | UI | Frontend upgrade, design direction C "Pouch & Process", same flows | ✅ done |
 | P10 | Should-haves: GST summary (GSTR-1 B2B + HSN + 3B 3.1a), payments register + ageing, owner dashboard | ✅ done |
-| P11 | Stretch: S1 purchase register, S5 variance alerts, payments Idempotency-Key, masters edit/deactivate, Tally day book, masters admin UI | 🟡 in progress |
+| P11 | Stretch: S1 purchase register, S5 variance alerts, payments Idempotency-Key, masters edit/deactivate, Tally day book, masters admin UI, PWA shell | 🟡 in progress |
 
 Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_notes.md](interview_notes.md).
 
@@ -139,6 +139,16 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 - P11 (S5): `GET /reports/variance-alerts` — one row per flagged yield or material line across all
   completed runs in period, re-using `production.run_variance()`, so alerts can't drift from the
   per-run screen. Dashboard surfaces `flagged_variances` count as an info banner.
+- P11 (PWA shell): `vite-plugin-pwa` generates a service worker that precaches the built static
+  assets (JS/CSS/fonts/SVGs — 39 entries, ~655 KiB) and a `manifest.webmanifest`, so the app opens
+  offline and can be installed on Android/iOS. `registerType: autoUpdate` ships new app versions
+  on the next reload without prompting. `/api` is explicitly excluded from the service worker
+  (`navigateFallbackDenylist: [/^\/api/]`) — API responses are never cached, since a stale ledger
+  is worse than an honest offline banner, and the salesman's existing online/offline UX tells
+  them when the server is unreachable. Dev-mode SW is disabled (it would race with Vite's HMR).
+  Icons come from `public/logo.svg` and `public/maskable-icon.svg` (same mark as the Logo
+  component — turmeric circle with the murukku spiral). Manifest verified served at
+  `/manifest.webmanifest` on the production build. No backend change.
 - P11 (masters admin UI): `MastersPage` at `/masters` (admin only). Three tabs (Items, Customers,
   Suppliers) over the already-public list endpoints; each row opens an inline form that PATCHes
   the editable fields and a Deactivate/Reactivate button that toggles `is_active`. A "Show
@@ -199,7 +209,6 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 - Demo: the admin page now re-reads the invoice from the server on reload (via `memory.js` + `GET /invoices/{id}`),
   so a browser reload between steps 5 and 7 is safe. Still use a separate browser for the salesman (docs/demo_script.md).
 - Stock summary now displays kg/l and ₹ via `showQty`/`inr` helpers (fixed in UI upgrade).
-- Not built yet: a service-worker PWA shell (P8 did the localStorage queue only).
 - Every push to `main` redeploys Render (about 1 min), including docs-only pushes.
 - `gh` CLI not installed; pushes use plain git.
 - Two Dockerfiles on purpose: root `Dockerfile` = production (Render); `backend/Dockerfile` = dev (compose,
@@ -233,8 +242,8 @@ P11 progress so far is merged to main and live on Render:
   - payments Idempotency-Key (closes the P8-era gap)
   - masters edit/deactivate (migration c932ce0a5ca4: is_active on item, customer, supplier)
   - Tally day book export (GET /reports/tally-daybook, 11 StockPage tabs)
-Pick the next P11 item, in priority order:
-  - service-worker PWA shell (vite-plugin-pwa; cache the app, offline shell)
-  - or close out P11: update the README/changelog and consider P11 done.
+All P11 stretch items are done. Options:
+  - Close out P11: update the README with the new tabs/pages, record final interview notes.
+  - Start optional extras (FEFO toggle, reorder alerts, "make N batches" planner, WhatsApp share).
 Hard rules: benchmark stays green; no paid services; ask before pushing.
 ```

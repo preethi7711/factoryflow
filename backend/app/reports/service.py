@@ -19,6 +19,7 @@ from app.masters.models import Customer, Item, ItemKind
 from app.payments.models import Payment, PaymentAllocation
 from app.production import service as production
 from app.production.models import ProductionRun, RunStatus
+from app.purchasing.models import Purchase, PurchaseLine
 from app.reports.schemas import Column, Report
 from app.sales.models import OrderStatus, SalesOrder
 
@@ -614,6 +615,9 @@ def dashboard(db: Session, start: date, end: date) -> dict:
         )
         or 0
     )
+    # Flagged variances for the dashboard banner — re-use the variance-alerts report so the
+    # headline can't disagree with the detail page.
+    flagged_variances = len(variance_alerts(db, start, end).rows)
     customers_count = int(db.scalar(select(func.count(Customer.id))) or 0)
     return {
         "from": start.isoformat(),
@@ -627,8 +631,150 @@ def dashboard(db: Session, start: date, end: date) -> dict:
         "collections_paise": collections_paise,
         "outstanding_paise": outstanding_paise,
         "completed_runs": completed_runs,
+        "flagged_variances": flagged_variances,
         "active_customers": customers_count,
     }
+
+
+# ---- Purchase register (S1) ----------------------------------------------------------
+#
+# Every goods-received note of the period with its supplier, line count and tax split. Purchase
+# totals are stored on the document (like invoices), so the sums here match what the ledger
+# capitalised at receipt. Input GST is informational (A15 — never costed into stock value).
+
+
+def purchase_register(db: Session, start: date, end: date) -> Report:
+    purchases = db.scalars(
+        select(Purchase)
+        .where(Purchase.purchase_date >= start, Purchase.purchase_date <= end)
+        .order_by(Purchase.purchase_date, Purchase.id)
+    ).all()
+    line_counts = (
+        dict(
+            db.execute(
+                select(PurchaseLine.purchase_id, func.count(PurchaseLine.id))
+                .where(PurchaseLine.purchase_id.in_([p.id for p in purchases]))
+                .group_by(PurchaseLine.purchase_id)
+            ).all()
+        )
+        if purchases
+        else {}
+    )
+    rows = []
+    totals = {
+        k: 0 for k in ("taxable_paise", "cgst_paise", "sgst_paise", "igst_paise", "total_paise")
+    }
+    for p in purchases:
+        supplier = masters.get_supplier(db, p.supplier_id)
+        rows.append(
+            {
+                "purchase_date": p.purchase_date.isoformat(),
+                "bill_no": p.bill_no or "",
+                "supplier_code": supplier.code,
+                "gstin": supplier.gstin or "",
+                "supply_type": p.supply_type,
+                "lines": int(line_counts.get(p.id, 0)),
+                "taxable_paise": p.taxable_paise,
+                "cgst_paise": p.cgst_paise,
+                "sgst_paise": p.sgst_paise,
+                "igst_paise": p.igst_paise,
+                "total_paise": p.total_paise,
+            }
+        )
+        for k in totals:
+            totals[k] += getattr(p, k)
+    return Report(
+        name="purchase-register",
+        from_=start,
+        to=end,
+        columns=_cols(
+            ("purchase_date", "Date"),
+            ("bill_no", "Bill no."),
+            ("supplier_code", "Supplier"),
+            ("gstin", "GSTIN"),
+            ("supply_type", "Supply"),
+            ("lines", "Lines"),
+            ("taxable_paise", "Taxable (paise)"),
+            ("cgst_paise", "CGST"),
+            ("sgst_paise", "SGST"),
+            ("igst_paise", "IGST"),
+            ("total_paise", "Total"),
+        ),
+        rows=rows,
+        totals=totals,
+    )
+
+
+# ---- Variance alerts (S5) ------------------------------------------------------------
+#
+# Every completed run of the period, one row per flagged line (yield or a material) — the ones
+# whose |variance| exceeded the item's tolerance (A2). Nothing new is computed: this re-uses
+# production.run_variance(), so the alerts can't disagree with the per-run variance screen.
+
+
+def variance_alerts(db: Session, start: date, end: date) -> Report:
+    runs = db.scalars(
+        select(ProductionRun)
+        .where(
+            ProductionRun.run_date >= start,
+            ProductionRun.run_date <= end,
+            ProductionRun.status == RunStatus.COMPLETED.value,
+        )
+        .order_by(ProductionRun.run_date, ProductionRun.id)
+    ).all()
+    rows = []
+    for run in runs:
+        var = production.run_variance(db, run.id)
+        product = masters.get_item(db, run.item_id)
+        if var.yield_.flagged:
+            rows.append(
+                {
+                    "run_no": run.run_no,
+                    "run_date": run.run_date.isoformat(),
+                    "product": product.code,
+                    "kind": "yield",
+                    "item_code": product.code,
+                    "uom": product.base_uom,
+                    "planned_qty": _qty(var.yield_.planned_qty),
+                    "actual_qty": _qty(var.yield_.actual_qty),
+                    "variance_bp": var.yield_.variance_bp,
+                    "variance_pct": f"{var.yield_.variance_bp / 100:.2f}%",
+                }
+            )
+        for line in var.lines:
+            if line.flagged:
+                rows.append(
+                    {
+                        "run_no": run.run_no,
+                        "run_date": run.run_date.isoformat(),
+                        "product": product.code,
+                        "kind": "consumption",
+                        "item_code": line.item_code,
+                        "uom": line.uom,
+                        "planned_qty": _qty(line.planned_qty),
+                        "actual_qty": _qty(line.actual_qty),
+                        "variance_bp": line.variance_bp,
+                        "variance_pct": f"{line.variance_bp / 100:.2f}%",
+                    }
+                )
+    return Report(
+        name="variance-alerts",
+        from_=start,
+        to=end,
+        columns=_cols(
+            ("run_no", "Run"),
+            ("run_date", "Date"),
+            ("product", "Product"),
+            ("kind", "Kind"),
+            ("item_code", "Item"),
+            ("uom", "Unit"),
+            ("planned_qty", "Planned"),
+            ("actual_qty", "Actual"),
+            ("variance_pct", "Variance"),
+        ),
+        rows=rows,
+        totals={"flagged_count": len(rows)},
+    )
 
 
 BUILDERS = {
@@ -640,4 +786,6 @@ BUILDERS = {
     "hsn-summary": hsn_summary,
     "payments-register": payments_register,
     "ageing": ageing,
+    "purchase-register": purchase_register,
+    "variance-alerts": variance_alerts,
 }

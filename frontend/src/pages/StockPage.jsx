@@ -25,18 +25,25 @@ function cell(key, row) {
   return v;
 }
 const label = (text) => text.replace(" (paise)", "");
-const isNumber = (key) => key.endsWith("_qty") || key.endsWith("_paise") || key === "age_days";
+const isNumber = (key) =>
+  key.endsWith("_qty") ||
+  key.endsWith("_paise") ||
+  key === "age_days" ||
+  key === "lines" ||
+  key === "variance_pct";
 
 // Reports the user can view inline and download. Order follows how the auditor and owner read
 // them: stock first (the ledger truth), then the GST stack, then money, then production.
 const TABS = [
   ["stock-summary", "Stock summary"],
   ["sales-register", "Sales"],
+  ["purchase-register", "Purchases"],
   ["gst-summary", "GST summary"],
   ["hsn-summary", "HSN"],
   ["payments-register", "Payments"],
   ["ageing", "Ageing"],
   ["production", "Production"],
+  ["variance-alerts", "Variance alerts"],
   ["stock-ledger", "Ledger"],
 ];
 

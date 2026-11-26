@@ -1,8 +1,8 @@
 # Project status (session handoff file)
 
-_Last updated: 2026-11-26 (P10 should-haves done)_
+_Last updated: 2026-11-26 (P11 stretch started: purchase register + variance alerts)_
 
-## Current phase: P10 done — GST summary, payments register, ageing, owner dashboard. Next: **P11 (stretch)**
+## Current phase: P11 in progress — purchase register + variance alerts done. Next: **remaining polish (service-worker, masters CRUD, payments idempotency, Tally)**
 
 **Live:** https://factoryflow-icdx.onrender.com (Render Free, Singapore, auto-deploys from `main`; Neon Free DB).
 Verified 2026-11-23 (P3): `/api/v1/health` → `{"status":"ok","db":"ok"}`, `/` serves the placeholder page,
@@ -23,7 +23,7 @@ P3 migration applied on Neon. First deploy failed because Render's **Root Direct
 | P9 | README + design note + demo script + UI fixes for benchmark steps 1–3, 6, 7 + seed-on-start | ✅ done, live and seeded |
 | UI | Frontend upgrade, design direction C "Pouch & Process", same flows | ✅ done |
 | P10 | Should-haves: GST summary (GSTR-1 B2B + HSN + 3B 3.1a), payments register + ageing, owner dashboard | ✅ done |
-| P11 | Stretch | ⚪ next |
+| P11 | Stretch: S1 purchase register, S5 variance alerts (+ dashboard banner) | 🟡 in progress |
 
 Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_notes.md](interview_notes.md).
 
@@ -133,6 +133,13 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
   `DashboardPage` (`/dashboard`, owner + admin) with four metric cards, FG-on-hand list and a compact
   ageing panel built from `/reports/ageing`. Owner's `HOME` is now `/dashboard`.
 
+- P11 (S1): `GET /reports/purchase-register` — one row per purchase in period with supplier, GSTIN,
+  supply type, line count and tax split. Purchase totals are stored on the document (like invoices),
+  so sums match what the ledger capitalised at receipt. Input GST is informational per A15.
+- P11 (S5): `GET /reports/variance-alerts` — one row per flagged yield or material line across all
+  completed runs in period, re-using `production.run_variance()`, so alerts can't drift from the
+  per-run screen. Dashboard surfaces `flagged_variances` count as an info banner.
+
 ## Open issues
 - **Live site seeded and verified 2026-11-24:** P9 deployed (new bundle served), `SEED_ON_START=1` and
   `SEED_DEMO_PASSWORD=factoryflow-demo` set on Render, `admin` login confirmed by the user. Optional: set
@@ -188,10 +195,12 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 
 ```
 Read CLAUDE.md and docs/project_status.md, then continue.
-P10 is merged to main and live on Render.
-Start P11 (stretch, in priority order): S5 variance alerts beyond tolerance (list flagged
-runs + a banner on the dashboard), S1 purchase register + supplier ledger (data is there — the
-purchase model is populated, just no report yet), then optional polish (service-worker PWA shell,
-masters edit/deactivate, payments Idempotency-Key, Tally CSV export).
+P11 first slice (purchase register + variance alerts + dashboard banner) is done on branch
+feat/p11-stretch. Ask the user whether to merge to main first.
+Then pick the next P11 item, in priority order:
+  - payments Idempotency-Key (fold it into POST /payments the same way orders do)
+  - masters edit/deactivate (small endpoints; UI pages come later)
+  - Tally CSV export (one more /reports/ builder)
+  - service-worker PWA shell (vite-plugin-pwa; cache the app, offline shell)
 Hard rules: benchmark stays green; no paid services; ask before pushing.
 ```

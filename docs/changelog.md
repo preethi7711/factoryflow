@@ -5,6 +5,17 @@ Each milestone adds a section. Commit hashes are in `git log`.
 
 ## [Unreleased]
 
+### Added (P11 stretch — first slice)
+- `reports.service.purchase_register` + `/reports/purchase-register` (S1): one row per purchase in
+  period with supplier, GSTIN, supply type, line count and tax split. Totals come straight from the
+  Purchase document (stored at receipt), so they match what the ledger capitalised.
+- `reports.service.variance_alerts` + `/reports/variance-alerts` (S5): one row per flagged yield or
+  material line across all completed runs in period. Re-uses `production.run_variance()`, so the
+  alerts can't disagree with the per-run variance screen.
+- Dashboard: `flagged_variances` field surfaces as an info banner on `DashboardPage` with a pointer
+  to Stock & reports → Variance alerts.
+- Frontend `StockPage`: Purchases and Variance alerts tabs added (10 tabs total).
+
 ### Added (P10 should-haves)
 - `reports.service.gst_summary` + `/reports/gst-summary`: non-cancelled invoices of the period with
   their tax split; the totals row is GSTR-3B table 3.1(a) (taxable + CGST + SGST + IGST + total).

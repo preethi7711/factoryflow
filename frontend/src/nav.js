@@ -4,5 +4,5 @@ export const HOME = {
   admin: "/orders",
   production: "/production",
   auditor: "/stock",
-  owner: "/stock",
+  owner: "/dashboard",
 };

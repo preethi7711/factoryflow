@@ -9,10 +9,14 @@ const NAV = {
   admin: [
     ["/orders", "Orders"],
     ["/stock", "Stock & reports"],
+    ["/dashboard", "Dashboard"],
   ],
   production: [["/production", "Production"]],
   auditor: [["/stock", "Stock & reports"]],
-  owner: [["/stock", "Stock & reports"]],
+  owner: [
+    ["/dashboard", "Dashboard"],
+    ["/stock", "Stock & reports"],
+  ],
 };
 
 const ROLE_NAME = {

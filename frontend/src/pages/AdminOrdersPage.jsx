@@ -111,6 +111,9 @@ export default function AdminOrdersPage() {
       await api("/payments", {
         method: "POST",
         token,
+        // Each payment carries a fresh Idempotency-Key so a double-tap or a network retry can't
+        // post two receipts for one real deposit — same guard orders use.
+        headers: { "Idempotency-Key": crypto.randomUUID() },
         body: {
           customer_id: o.customer_id,
           payment_date: today(),

@@ -264,6 +264,7 @@ def step7_payment(sc: Scenario) -> None:
         "/payments",
         "admin",
         expect=201,
+        headers={"Idempotency-Key": str(uuid.uuid4())},
         json={
             "customer_id": sc.ids["RETAILER-A"],
             "payment_date": PAYMENT_DATE,

@@ -2,9 +2,17 @@
 
 One transaction per payment. Nothing here moves stock. Outstanding is derived on read
 (invoice total - allocations), never stored, so it can't drift from the payments that back it.
+
+The Idempotency-Key header gates POST /payments the same way it does POST /orders: a replayed
+key with the same body returns the first receipt (never a second one); a different body under the
+same key is a 409 conflict; keys belong to the user who first used them. Shares the
+`idempotency_key` table and the `route` field tells them apart.
 """
 
+import hashlib
+
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.audit import service as audit
@@ -20,6 +28,9 @@ from app.payments.schemas import (
     PaymentCreate,
     PaymentOut,
 )
+from app.sales.models import IdempotencyKey
+
+PAYMENT_ROUTE = "POST /payments"
 
 
 def _allocated(db: Session, invoice_id: int) -> int:
@@ -51,10 +62,37 @@ def _out(db: Session, payment: Payment, invoices: dict[int, Invoice]) -> Payment
     )
 
 
-def record_payment(db: Session, data: PaymentCreate, user: AppUser) -> PaymentOut:
+def _request_hash(data: PaymentCreate) -> str:
+    """A stable fingerprint of the request body: same body → same hash → replay as one."""
+    return hashlib.sha256(data.model_dump_json().encode()).hexdigest()
+
+
+def _replay(existing: IdempotencyKey, request_hash: str, user: AppUser) -> PaymentOut:
+    # Same rule as orders: the key belongs to the user who first used it. Handing a receipt to a
+    # different user who happened to reuse the key would leak the customer and the amount.
+    if existing.user_id != user.id:
+        raise AppError(403, "FORBIDDEN", "this Idempotency-Key belongs to another user")
+    if existing.route != PAYMENT_ROUTE or existing.request_hash != request_hash:
+        raise AppError(
+            409,
+            "IDEMPOTENCY_CONFLICT",
+            "this Idempotency-Key was already used for a different request",
+        )
+    return PaymentOut.model_validate(existing.response_json)
+
+
+def record_payment(db: Session, key: str, data: PaymentCreate, user: AppUser) -> PaymentOut:
     """Record a receipt and allocate it to invoices. The allocations must sum to the amount, and
     no invoice may be paid beyond its total (checked under a row lock, so concurrent payments to
-    the same invoice can't both slip past). A cancelled invoice takes no payment."""
+    the same invoice can't both slip past). A cancelled invoice takes no payment.
+
+    Idempotency: a repeat of the same key + same body returns the first receipt; a different body
+    under the same key is a 409."""
+    request_hash = _request_hash(data)
+    existing = db.get(IdempotencyKey, key)
+    if existing is not None:
+        return _replay(existing, request_hash, user)
+
     customer = masters.get_customer(db, data.customer_id)
     allocated_total = sum(a.amount_paise for a in data.allocations)
     if allocated_total != data.amount_paise:
@@ -66,62 +104,86 @@ def record_payment(db: Session, data: PaymentCreate, user: AppUser) -> PaymentOu
     ids = [a.invoice_id for a in data.allocations]
     if len(set(ids)) != len(ids):
         raise AppError(422, "DUPLICATE_ALLOCATION", "an invoice is allocated twice in one payment")
-    # Lock the invoice rows (id order) so a concurrent payment to the same invoice waits and sees
-    # our allocation before it runs its own over-allocation check.
-    invoices = {
-        inv.id: inv
-        for inv in db.scalars(
-            select(Invoice).where(Invoice.id.in_(ids)).order_by(Invoice.id).with_for_update()
-        )
-    }
-    payment = Payment(
-        customer_id=customer.id,
-        payment_date=data.payment_date,
-        amount_paise=data.amount_paise,
-        reference=data.reference,
-        created_by=user.id,
-    )
-    db.add(payment)
-    db.flush()
-    for alloc in data.allocations:
-        invoice = invoices.get(alloc.invoice_id)
-        if invoice is None:
-            raise not_found("invoice", alloc.invoice_id)
-        if invoice.customer_id != customer.id:
-            raise AppError(422, "WRONG_CUSTOMER", f"{invoice.invoice_no} is not this customer's")
-        if invoice.status == InvoiceStatus.CANCELLED.value:
-            raise AppError(409, "INVOICE_CANCELLED", f"{invoice.invoice_no} is cancelled")
-        already = _allocated(db, invoice.id)
-        if already + alloc.amount_paise > invoice.total_paise:
-            raise AppError(
-                409,
-                "OVER_ALLOCATION",
-                f"{invoice.invoice_no}: {already + alloc.amount_paise} exceeds its total "
-                f"{invoice.total_paise}",
-                details={
-                    "invoice_id": invoice.id,
-                    "total_paise": invoice.total_paise,
-                    "already_paid_paise": already,
-                    "requested_paise": alloc.amount_paise,
-                },
+    # Everything from the first INSERT to the commit runs in one try: a concurrent double-tap
+    # under the same key fires the UNIQUE on idempotency_key, so we roll back and replay the
+    # winner instead of 500-ing the loser (same guard orders.service uses).
+    try:
+        # Lock the invoice rows (id order) so a concurrent payment to the same invoice waits and
+        # sees our allocation before it runs its own over-allocation check.
+        invoices = {
+            inv.id: inv
+            for inv in db.scalars(
+                select(Invoice).where(Invoice.id.in_(ids)).order_by(Invoice.id).with_for_update()
             )
+        }
+        payment = Payment(
+            customer_id=customer.id,
+            payment_date=data.payment_date,
+            amount_paise=data.amount_paise,
+            reference=data.reference,
+            created_by=user.id,
+        )
+        db.add(payment)
+        db.flush()
+        for alloc in data.allocations:
+            invoice = invoices.get(alloc.invoice_id)
+            if invoice is None:
+                raise not_found("invoice", alloc.invoice_id)
+            if invoice.customer_id != customer.id:
+                raise AppError(
+                    422, "WRONG_CUSTOMER", f"{invoice.invoice_no} is not this customer's"
+                )
+            if invoice.status == InvoiceStatus.CANCELLED.value:
+                raise AppError(409, "INVOICE_CANCELLED", f"{invoice.invoice_no} is cancelled")
+            already = _allocated(db, invoice.id)
+            if already + alloc.amount_paise > invoice.total_paise:
+                raise AppError(
+                    409,
+                    "OVER_ALLOCATION",
+                    f"{invoice.invoice_no}: {already + alloc.amount_paise} exceeds its total "
+                    f"{invoice.total_paise}",
+                    details={
+                        "invoice_id": invoice.id,
+                        "total_paise": invoice.total_paise,
+                        "already_paid_paise": already,
+                        "requested_paise": alloc.amount_paise,
+                    },
+                )
+            db.add(
+                PaymentAllocation(
+                    payment_id=payment.id,
+                    invoice_id=invoice.id,
+                    amount_paise=alloc.amount_paise,
+                )
+            )
+        db.flush()
+        db.refresh(payment)
+        out = _out(db, payment, invoices)
         db.add(
-            PaymentAllocation(
-                payment_id=payment.id, invoice_id=invoice.id, amount_paise=alloc.amount_paise
+            IdempotencyKey(
+                key=key,
+                user_id=user.id,
+                route=PAYMENT_ROUTE,
+                request_hash=request_hash,
+                status_code=201,
+                response_json=out.model_dump(mode="json"),
             )
         )
-    db.flush()
-    db.refresh(payment)
-    out = _out(db, payment, invoices)
-    audit.record(
-        db,
-        entity="payment",
-        entity_id=payment.id,
-        action="RECORD",
-        user_id=user.id,
-        after=out.model_dump(mode="json"),
-    )
-    db.commit()
+        audit.record(
+            db,
+            entity="payment",
+            entity_id=payment.id,
+            action="RECORD",
+            user_id=user.id,
+            after=out.model_dump(mode="json"),
+        )
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        winner = db.get(IdempotencyKey, key)
+        if winner is None:
+            raise
+        return _replay(winner, request_hash, user)
     return out
 
 

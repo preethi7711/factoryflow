@@ -65,7 +65,8 @@ def pay(client, as_user, customer_id, amount, allocations, *, on="2026-11-05", w
         "amount_paise": amount,
         "allocations": allocations,
     }
-    return client.post(f"{API}/payments", json=body, headers=as_user(who))
+    headers = {**as_user(who), "Idempotency-Key": fresh_key("pay")}
+    return client.post(f"{API}/payments", json=body, headers=headers)
 
 
 def one_alloc(invoice_id, amount):
@@ -173,7 +174,9 @@ def test_concurrent_double_pay_cannot_over_allocate(client, as_user, monkeypatch
     )
 
     def job(session):
-        return record_payment(session, data, session.get(AppUser, admin_id))
+        # Each thread uses its own idempotency key so the test exercises over-allocation (not the
+        # replay guard, which is covered by the API-level tests).
+        return record_payment(session, fresh_key("pay"), data, session.get(AppUser, admin_id))
 
     results = _in_threads(job, job)
     ok = [r for r in results if not isinstance(r, Exception)]

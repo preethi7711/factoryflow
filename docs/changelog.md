@@ -5,6 +5,20 @@ Each milestone adds a section. Commit hashes are in `git log`.
 
 ## [Unreleased]
 
+### Added (P11 stretch — masters edit/deactivate)
+- Migration `c932ce0a5ca4`: adds `is_active BOOLEAN NOT NULL DEFAULT TRUE` to `item`, `customer`,
+  `supplier`. Existing rows become active; no behaviour change until an admin edits one.
+- `PATCH /items/{id}`, `PATCH /customers/{id}`, `PATCH /suppliers/{id}` (admin only). Each PATCH
+  takes a subset of fields; `code`, `kind` and `base_uom` (items only) are immutable because they
+  are structural identifiers that invoices, lots and the ledger point at.
+- List endpoints (`/items`, `/customers`, `/suppliers`) default to active-only, with
+  `?include_inactive=true` to see everything (so an admin can find a deactivated row and reactivate
+  it). The price list excludes inactive FGs.
+- Every PATCH is audit-logged with before→after. Historical documents (orders, invoices, lots,
+  purchases) never look at `is_active`, so deactivating a master leaves all prior figures intact.
+- 10 new integration tests cover edit, deactivate, `include_inactive`, salesman reassignment,
+  invalid salesman, role gating, 404s.
+
 ### Changed (P11 stretch — payments idempotency)
 - `POST /payments` now requires an `Idempotency-Key` header, same shape as `POST /orders`. A
   replayed key with the same body returns the first receipt (never a second one); a different body

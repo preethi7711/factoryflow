@@ -1,8 +1,8 @@
 # Project status (session handoff file)
 
-_Last updated: 2026-11-26 (P11 continued: payments Idempotency-Key)_
+_Last updated: 2026-11-26 (P11 continued: masters edit + deactivate)_
 
-## Current phase: P11 in progress — purchase register + variance alerts + payments idempotency done. Next: **remaining polish (masters CRUD, Tally, service-worker)**
+## Current phase: P11 in progress — masters edit/deactivate done on top of the earlier P11 slices. Next: **Tally CSV export, service-worker PWA shell**
 
 **Live:** https://factoryflow-icdx.onrender.com (Render Free, Singapore, auto-deploys from `main`; Neon Free DB).
 Verified 2026-11-23 (P3): `/api/v1/health` → `{"status":"ok","db":"ok"}`, `/` serves the placeholder page,
@@ -23,7 +23,7 @@ P3 migration applied on Neon. First deploy failed because Render's **Root Direct
 | P9 | README + design note + demo script + UI fixes for benchmark steps 1–3, 6, 7 + seed-on-start | ✅ done, live and seeded |
 | UI | Frontend upgrade, design direction C "Pouch & Process", same flows | ✅ done |
 | P10 | Should-haves: GST summary (GSTR-1 B2B + HSN + 3B 3.1a), payments register + ageing, owner dashboard | ✅ done |
-| P11 | Stretch: S1 purchase register, S5 variance alerts, payments Idempotency-Key | 🟡 in progress |
+| P11 | Stretch: S1 purchase register, S5 variance alerts, payments Idempotency-Key, masters edit/deactivate | 🟡 in progress |
 
 Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_notes.md](interview_notes.md).
 
@@ -139,6 +139,16 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 - P11 (S5): `GET /reports/variance-alerts` — one row per flagged yield or material line across all
   completed runs in period, re-using `production.run_variance()`, so alerts can't drift from the
   per-run screen. Dashboard surfaces `flagged_variances` count as an info banner.
+- P11 (masters edit/deactivate): `PATCH /items/{id}`, `PATCH /customers/{id}`, `PATCH /suppliers/{id}`
+  (admin only). Each PATCH takes a subset of fields; `code`, `kind` and `base_uom` (on items) are
+  immutable because they are structural (code is the stable identifier on invoices/lots; kind and
+  base_uom decide what the item means in the ledger). New migration `c932ce0a5ca4` adds
+  `is_active BOOLEAN NOT NULL DEFAULT TRUE` to `item`, `customer`, `supplier`. The list endpoints
+  default to active-only with `?include_inactive=true` to see everything; the price list excludes
+  inactive FGs, so the salesman can't sell a discontinued line. Historical orders, invoices, lots
+  and purchases never look at `is_active`, so nothing on the ledger shifts when a master is
+  deactivated. Every edit is audit-logged with before→after. 10 new tests cover edit, deactivate,
+  include_inactive, salesman reassignment, invalid salesman, role gating, 404s. Backend 336 (was 326).
 - P11 (payments idempotency): `POST /payments` now requires an `Idempotency-Key` header, same shape
   as `POST /orders`. Keys share the `idempotency_key` table; `route = "POST /payments"` tells them
   apart. A replayed key with the same body returns the first receipt (never a second one); a
@@ -174,8 +184,9 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 - Demo: the admin page now re-reads the invoice from the server on reload (via `memory.js` + `GET /invoices/{id}`),
   so a browser reload between steps 5 and 7 is safe. Still use a separate browser for the salesman (docs/demo_script.md).
 - Stock summary now displays kg/l and ₹ via `showQty`/`inr` helpers (fixed in UI upgrade).
-- Not built yet: a service-worker PWA shell (P8 did the localStorage queue only); edit/deactivate
-  endpoints for masters (create only so far); Tally CSV export.
+- Not built yet: a service-worker PWA shell (P8 did the localStorage queue only); UI pages for the
+  new masters PATCH endpoints (API only so far — admin uses a tool like curl or Postman); Tally CSV
+  export.
 - Every push to `main` redeploys Render (about 1 min), including docs-only pushes.
 - `gh` CLI not installed; pushes use plain git.
 - Two Dockerfiles on purpose: root `Dockerfile` = production (Render); `backend/Dockerfile` = dev (compose,
@@ -184,7 +195,7 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 
 ## Benchmark scoreboard
 
-`pytest -q`: 326 passed (2026-11-26, P11 with 4 new payments-idempotency tests). **`pytest -m benchmark`: 19 passed** (re-verified 2026-11-26). Frontend: `npm run test` 9 passed, lint and build clean. All four new report endpoints verified in a browser on the dev DB: dashboard reads ₹7,875 sales / ₹4,000 collections / ₹3,875 outstanding / 88 pkt FG; GST summary row matches invoice FF/2026-27/0001 (CGST+SGST ₹187.50 each); HSN 2106 row shows 150 pkt × 5% = ₹787.50 tax; ageing shows one invoice in 0-30 days bucket at 6 days old. **All nine benchmark steps re-verified through the new UI** on the dev DB: flour 120 kg, oil 19.5 l, spice 3.8 kg, pouches 306, cartons 21, FG 238 → 88; variance −6.00% / +5.00% flagged, pouches −3.00% not; invoice FF/2026-27/0001 ₹7,875; outstanding ₹3,875; Distributor B short 32 / IGST ₹300; cost ₹31.14, margin ₹18.86.
+`pytest -q`: 336 passed (2026-11-26, P11 cumulative with 10 new masters-edit tests on top of payments-idempotency). **`pytest -m benchmark`: 19 passed** (re-verified 2026-11-26). Migration `c932ce0a5ca4` adds `is_active` to `item`, `customer`, `supplier`. Frontend: `npm run test` 9 passed, lint and build clean. All four new report endpoints verified in a browser on the dev DB: dashboard reads ₹7,875 sales / ₹4,000 collections / ₹3,875 outstanding / 88 pkt FG; GST summary row matches invoice FF/2026-27/0001 (CGST+SGST ₹187.50 each); HSN 2106 row shows 150 pkt × 5% = ₹787.50 tax; ageing shows one invoice in 0-30 days bucket at 6 days old. **All nine benchmark steps re-verified through the new UI** on the dev DB: flour 120 kg, oil 19.5 l, spice 3.8 kg, pouches 306, cartons 21, FG 238 → 88; variance −6.00% / +5.00% flagged, pouches −3.00% not; invoice FF/2026-27/0001 ₹7,875; outstanding ₹3,875; Distributor B short 32 / IGST ₹300; cost ₹31.14, margin ₹18.86.
 
 | Check | Status |
 |---|---|
@@ -208,8 +219,8 @@ P11 progress so far is merged to main and live on Render:
   - purchase register + variance alerts + dashboard banner
   - payments Idempotency-Key (closes the P8-era gap)
 Pick the next P11 item, in priority order:
-  - masters edit/deactivate (small endpoints; UI pages come later)
   - Tally CSV export (one more /reports/ builder)
+  - UI pages for masters edit/deactivate (API is ready; a thin admin screen would help)
   - service-worker PWA shell (vite-plugin-pwa; cache the app, offline shell)
 Hard rules: benchmark stays green; no paid services; ask before pushing.
 ```

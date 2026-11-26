@@ -66,7 +66,24 @@ class ItemOut(BaseModel):
     pack_size: str | None
     variance_tol_bp: int
     shelf_life_days: int | None
+    is_active: bool
     units: list[ItemUnitOut]
+
+
+class ItemUpdate(BaseModel):
+    """PATCH /items/{id}: everything except code/kind/base_uom/units is editable. Those four are
+    structural — code is the stable identifier on invoices and lots; kind decides what the item
+    can do (sell / buy / produce); base_uom is how stock is counted; units are an append-only pack
+    list. An omitted field means "no change"; `null` is a legitimate value for the nullable ones."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    hsn: str | None = Field(default=None, pattern=r"^[0-9]{4,8}$")
+    gst_rate_bp: BasisPoints | None = None
+    sale_price_paise: Paise | None = None
+    pack_size: str | None = Field(default=None, max_length=40)
+    variance_tol_bp: BasisPoints | None = None
+    shelf_life_days: int | None = Field(default=None, gt=0)
+    is_active: bool | None = None
 
 
 class PriceListRow(BaseModel):
@@ -109,6 +126,7 @@ class CustomerOut(BaseModel):
     state_code: str
     address: str | None
     salesman_id: int | None
+    is_active: bool
 
 
 class SupplierOut(BaseModel):
@@ -119,6 +137,7 @@ class SupplierOut(BaseModel):
     name: str
     gstin: str | None
     state_code: str
+    is_active: bool
 
 
 class CustomerCreated(CustomerOut):
@@ -126,6 +145,34 @@ class CustomerCreated(CustomerOut):
 
 
 class SupplierCreated(SupplierOut):
+    warnings: list[str] = []
+
+
+class CustomerUpdate(BaseModel):
+    """PATCH /customers/{id}: code is immutable (invoices and reports point at it)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    gstin: Gstin | None = None
+    state_code: StateCode | None = None
+    address: str | None = None
+    salesman_id: int | None = None
+    is_active: bool | None = None
+
+
+class SupplierUpdate(BaseModel):
+    """PATCH /suppliers/{id}: code is immutable (purchases and reports point at it)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    gstin: Gstin | None = None
+    state_code: StateCode | None = None
+    is_active: bool | None = None
+
+
+class CustomerUpdated(CustomerOut):
+    warnings: list[str] = []
+
+
+class SupplierUpdated(SupplierOut):
     warnings: list[str] = []
 
 

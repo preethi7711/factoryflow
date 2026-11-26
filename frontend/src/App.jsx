@@ -6,6 +6,7 @@ import { HOME } from "./nav.js";
 import AdminOrdersPage from "./pages/AdminOrdersPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
+import MastersPage from "./pages/MastersPage.jsx";
 import OrderPage from "./pages/OrderPage.jsx";
 import ProductionPage from "./pages/ProductionPage.jsx";
 import StockPage from "./pages/StockPage.jsx";
@@ -63,6 +64,14 @@ export default function App() {
           element={
             <Protected roles={["owner", "admin"]}>
               <DashboardPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/masters"
+          element={
+            <Protected roles={["admin"]}>
+              <MastersPage />
             </Protected>
           }
         />

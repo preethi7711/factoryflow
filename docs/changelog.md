@@ -5,6 +5,15 @@ Each milestone adds a section. Commit hashes are in `git log`.
 
 ## [Unreleased]
 
+### Added (P11 stretch — masters admin UI)
+- New `MastersPage` at `/masters` (admin only). Three tabs (Items / Customers / Suppliers) over
+  the existing list endpoints; each row opens an inline form that PATCHes editable fields.
+- Price is parsed via `toPaise()` so money stays integer paise; GST% and variance tolerance %
+  convert to basis points at save time.
+- Deactivate / Reactivate button toggles `is_active`. "Show inactive" checkbox flips the
+  `?include_inactive=true` query string.
+- Admin nav gains a Masters link (4 tabs: Orders, Stock & reports, Dashboard, Masters).
+
 ### Added (P11 stretch — Tally day book)
 - `reports.service.tally_daybook` + `GET /reports/tally-daybook`: one row per voucher in period
   (non-cancelled Sales invoices, Purchases, customer Receipts), sorted chronologically. Dates are

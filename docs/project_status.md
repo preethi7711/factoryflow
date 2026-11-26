@@ -1,8 +1,8 @@
 # Project status (session handoff file)
 
-_Last updated: 2026-11-26 (P11 continued: Tally CSV export)_
+_Last updated: 2026-11-26 (P11 continued: masters admin UI)_
 
-## Current phase: P11 in progress — Tally day book done on top of the earlier P11 slices. Next: **service-worker PWA shell, UI pages for masters edit/deactivate**
+## Current phase: P11 in progress — masters admin UI done on top of the earlier P11 slices. Next: **service-worker PWA shell**
 
 **Live:** https://factoryflow-icdx.onrender.com (Render Free, Singapore, auto-deploys from `main`; Neon Free DB).
 Verified 2026-11-23 (P3): `/api/v1/health` → `{"status":"ok","db":"ok"}`, `/` serves the placeholder page,
@@ -23,7 +23,7 @@ P3 migration applied on Neon. First deploy failed because Render's **Root Direct
 | P9 | README + design note + demo script + UI fixes for benchmark steps 1–3, 6, 7 + seed-on-start | ✅ done, live and seeded |
 | UI | Frontend upgrade, design direction C "Pouch & Process", same flows | ✅ done |
 | P10 | Should-haves: GST summary (GSTR-1 B2B + HSN + 3B 3.1a), payments register + ageing, owner dashboard | ✅ done |
-| P11 | Stretch: S1 purchase register, S5 variance alerts, payments Idempotency-Key, masters edit/deactivate, Tally day book | 🟡 in progress |
+| P11 | Stretch: S1 purchase register, S5 variance alerts, payments Idempotency-Key, masters edit/deactivate, Tally day book, masters admin UI | 🟡 in progress |
 
 Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_notes.md](interview_notes.md).
 
@@ -139,6 +139,14 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 - P11 (S5): `GET /reports/variance-alerts` — one row per flagged yield or material line across all
   completed runs in period, re-using `production.run_variance()`, so alerts can't drift from the
   per-run screen. Dashboard surfaces `flagged_variances` count as an info banner.
+- P11 (masters admin UI): `MastersPage` at `/masters` (admin only). Three tabs (Items, Customers,
+  Suppliers) over the already-public list endpoints; each row opens an inline form that PATCHes
+  the editable fields and a Deactivate/Reactivate button that toggles `is_active`. A "Show
+  inactive" checkbox flips `?include_inactive=true`. The form uses `toPaise()` for the sale price
+  (text → paise, never a float) and basis points for GST% / tolerance% at save time, so the wire
+  values match the API's shape exactly. Verified on the dev DB: changed Murukku price to ₹55.50
+  and the API read back 5550 paise; deactivating CARTON hid it from the default list and left it
+  visible with `?include_inactive=true`. Lint/build clean; frontend tests still 9 green.
 - P11 (Tally day book): `GET /reports/tally-daybook` — one row per voucher in period, sorted
   chronologically (non-cancelled Sales invoices, Purchases, customer Receipts). Dates are formatted
   DD-MM-YYYY, the shape Tally's CSV voucher import expects. Amounts stay integer paise (the
@@ -191,8 +199,7 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 - Demo: the admin page now re-reads the invoice from the server on reload (via `memory.js` + `GET /invoices/{id}`),
   so a browser reload between steps 5 and 7 is safe. Still use a separate browser for the salesman (docs/demo_script.md).
 - Stock summary now displays kg/l and ₹ via `showQty`/`inr` helpers (fixed in UI upgrade).
-- Not built yet: a service-worker PWA shell (P8 did the localStorage queue only); UI pages for the
-  new masters PATCH endpoints (API only so far — admin uses a tool like curl or Postman).
+- Not built yet: a service-worker PWA shell (P8 did the localStorage queue only).
 - Every push to `main` redeploys Render (about 1 min), including docs-only pushes.
 - `gh` CLI not installed; pushes use plain git.
 - Two Dockerfiles on purpose: root `Dockerfile` = production (Render); `backend/Dockerfile` = dev (compose,
@@ -227,7 +234,7 @@ P11 progress so far is merged to main and live on Render:
   - masters edit/deactivate (migration c932ce0a5ca4: is_active on item, customer, supplier)
   - Tally day book export (GET /reports/tally-daybook, 11 StockPage tabs)
 Pick the next P11 item, in priority order:
-  - UI pages for masters edit/deactivate (API is ready; a thin admin screen would help)
   - service-worker PWA shell (vite-plugin-pwa; cache the app, offline shell)
+  - or close out P11: update the README/changelog and consider P11 done.
 Hard rules: benchmark stays green; no paid services; ask before pushing.
 ```

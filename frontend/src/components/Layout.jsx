@@ -10,6 +10,7 @@ const NAV = {
     ["/orders", "Orders"],
     ["/stock", "Stock & reports"],
     ["/dashboard", "Dashboard"],
+    ["/masters", "Masters"],
   ],
   production: [["/production", "Production"]],
   auditor: [["/stock", "Stock & reports"]],

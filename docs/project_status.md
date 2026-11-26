@@ -188,9 +188,8 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 
 ```
 Read CLAUDE.md and docs/project_status.md, then continue.
-P10 (should-haves: GST summary, HSN, payments register, ageing, owner dashboard) is done on branch
-feat/p10-should-haves. Ask the user whether to merge to main first.
-Then start P11 (stretch, in priority order): S5 variance alerts beyond tolerance (list flagged
+P10 is merged to main and live on Render.
+Start P11 (stretch, in priority order): S5 variance alerts beyond tolerance (list flagged
 runs + a banner on the dashboard), S1 purchase register + supplier ledger (data is there — the
 purchase model is populated, just no report yet), then optional polish (service-worker PWA shell,
 masters edit/deactivate, payments Idempotency-Key, Tally CSV export).

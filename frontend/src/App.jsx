@@ -4,6 +4,7 @@ import { useAuth } from "./auth/AuthContext.jsx";
 import Layout from "./components/Layout.jsx";
 import { HOME } from "./nav.js";
 import AdminOrdersPage from "./pages/AdminOrdersPage.jsx";
+import DashboardPage from "./pages/DashboardPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import OrderPage from "./pages/OrderPage.jsx";
 import ProductionPage from "./pages/ProductionPage.jsx";
@@ -54,6 +55,14 @@ export default function App() {
           element={
             <Protected roles={["admin", "auditor", "owner"]}>
               <StockPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/dashboard"
+          element={
+            <Protected roles={["owner", "admin"]}>
+              <DashboardPage />
             </Protected>
           }
         />

@@ -20,6 +20,18 @@ Fmt = Literal["json", "csv", "xlsx"]
 EXT = {"csv": "csv", "xlsx": "xlsx"}
 
 
+@router.get("/dashboard")
+def get_dashboard(
+    db: DbSession,
+    user: ReportReader,
+    from_: Annotated[date, Query(alias="from")],
+    to: Annotated[date, Query()],
+) -> JSONResponse:
+    # The owner's at-a-glance numbers. All figures are computed from the same tables the detailed
+    # reports read, so nothing here can drift from the ledger or the sales/payments records.
+    return JSONResponse(service.dashboard(db, from_, to))
+
+
 @router.get("/{name}")
 def get_report(
     name: str,

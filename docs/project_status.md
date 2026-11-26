@@ -195,9 +195,8 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 
 ```
 Read CLAUDE.md and docs/project_status.md, then continue.
-P11 first slice (purchase register + variance alerts + dashboard banner) is done on branch
-feat/p11-stretch. Ask the user whether to merge to main first.
-Then pick the next P11 item, in priority order:
+P11 first slice is merged to main and live on Render.
+Pick the next P11 item, in priority order:
   - payments Idempotency-Key (fold it into POST /payments the same way orders do)
   - masters edit/deactivate (small endpoints; UI pages come later)
   - Tally CSV export (one more /reports/ builder)

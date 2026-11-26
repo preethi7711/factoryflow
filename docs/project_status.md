@@ -1,8 +1,8 @@
 # Project status (session handoff file)
 
-_Last updated: 2026-11-25 (UI upgrade done)_
+_Last updated: 2026-11-26 (P10 should-haves done)_
 
-## Current phase: UI upgrade done — Pouch & Process redesign. Next: **P10 (should-haves)**
+## Current phase: P10 done — GST summary, payments register, ageing, owner dashboard. Next: **P11 (stretch)**
 
 **Live:** https://factoryflow-icdx.onrender.com (Render Free, Singapore, auto-deploys from `main`; Neon Free DB).
 Verified 2026-11-23 (P3): `/api/v1/health` → `{"status":"ok","db":"ok"}`, `/` serves the placeholder page,
@@ -22,7 +22,8 @@ P3 migration applied on Neon. First deploy failed because Render's **Root Direct
 | P8 | Frontend (thin): login, salesman mobile order + offline queue, admin/production/stock screens | ✅ done |
 | P9 | README + design note + demo script + UI fixes for benchmark steps 1–3, 6, 7 + seed-on-start | ✅ done, live and seeded |
 | UI | Frontend upgrade, design direction C "Pouch & Process", same flows | ✅ done |
-| P10–P11 | Should-haves → stretch | ⚪ next |
+| P10 | Should-haves: GST summary (GSTR-1 B2B + HSN + 3B 3.1a), payments register + ageing, owner dashboard | ✅ done |
+| P11 | Stretch | ⚪ next |
 
 Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_notes.md](interview_notes.md).
 
@@ -117,6 +118,21 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 - UI: single-product price list uses `grid-cols-1`; nav pills are `whitespace-nowrap`; stock table uses
   `min-w-max` inside `overflow-x-auto` for correct horizontal scroll on mobile.
 
+- P10: four new read-only report endpoints and one dashboard — all built from the same tables the
+  detailed reports already read, so nothing can drift. `GET /reports/gst-summary` lists non-cancelled
+  invoices with their tax split; its totals row is table 3.1(a) of GSTR-3B (taxable, CGST, SGST, IGST,
+  total). `GET /reports/hsn-summary` groups non-cancelled invoice LINES by (HSN × UOM × rate) — the
+  GSTR-1 table 12 shape. `GET /reports/payments-register` lists receipts in the period with their
+  `applied_to` allocations. `GET /reports/ageing` buckets each unpaid, non-cancelled invoice by age
+  (0-30 / 31-60 / 61-90 / 91+ days) as of `to`; outstanding per invoice is derived the same way
+  `payments.service` does it, so one source of truth. `GET /reports/dashboard` returns FG qty + value
+  on hand, pending orders, sales/collections/outstanding/completed-runs for the period. Everything
+  stays append-only — no new tables, no migration.
+- P10 frontend: `StockPage` gets a tab bar for all eight reports, rendered inline from the common
+  `{columns, rows, totals}` envelope (one `ReportTable` component, no per-report code). New
+  `DashboardPage` (`/dashboard`, owner + admin) with four metric cards, FG-on-hand list and a compact
+  ageing panel built from `/reports/ageing`. Owner's `HOME` is now `/dashboard`.
+
 ## Open issues
 - **Live site seeded and verified 2026-11-24:** P9 deployed (new bundle served), `SEED_ON_START=1` and
   `SEED_DEMO_PASSWORD=factoryflow-demo` set on Render, `admin` login confirmed by the user. Optional: set
@@ -152,7 +168,7 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 
 ## Benchmark scoreboard
 
-`pytest -q`: 322 passed (2026-11-24, P9; no backend change in UI). **`pytest -m benchmark`: 19 passed** (re-verified 2026-11-25). Frontend: `npm run test` 9 passed (added `showQty` tests), lint and build clean. **All nine benchmark steps re-verified through the new UI** on the dev DB: flour 120 kg, oil 19.5 l, spice 3.8 kg, pouches 306, cartons 21, FG 238 → 88; variance −6.00% / +5.00% flagged, pouches −3.00% not; invoice FF/2026-27/0001 ₹7,875; outstanding ₹3,875; Distributor B short 32 / IGST ₹300; cost ₹31.14, margin ₹18.86.
+`pytest -q`: 322 passed (2026-11-26, P10; new report endpoints + dashboard, no existing behaviour changed). **`pytest -m benchmark`: 19 passed** (re-verified 2026-11-26). Frontend: `npm run test` 9 passed, lint and build clean. All four new report endpoints verified in a browser on the dev DB: dashboard reads ₹7,875 sales / ₹4,000 collections / ₹3,875 outstanding / 88 pkt FG; GST summary row matches invoice FF/2026-27/0001 (CGST+SGST ₹187.50 each); HSN 2106 row shows 150 pkt × 5% = ₹787.50 tax; ageing shows one invoice in 0-30 days bucket at 6 days old. **All nine benchmark steps re-verified through the new UI** on the dev DB: flour 120 kg, oil 19.5 l, spice 3.8 kg, pouches 306, cartons 21, FG 238 → 88; variance −6.00% / +5.00% flagged, pouches −3.00% not; invoice FF/2026-27/0001 ₹7,875; outstanding ₹3,875; Distributor B short 32 / IGST ₹300; cost ₹31.14, margin ₹18.86.
 
 | Check | Status |
 |---|---|
@@ -172,9 +188,11 @@ Full roadmap: [roadmap.md](roadmap.md). Interview prep per phase: [interview_not
 
 ```
 Read CLAUDE.md and docs/project_status.md, then continue.
-UI upgrade (design direction C "Pouch & Process") is merged to main and live on Render.
-Start P10 (should-haves). Prioritise: S4 GST summary (GSTR-1 B2B + HSN rows, 3B 3.1a totals),
-S2 payments register + ageing, S6 owner dashboard (key metrics from existing endpoints). No backend
-schema changes needed for these — they are read-only report endpoints and a dashboard page.
+P10 (should-haves: GST summary, HSN, payments register, ageing, owner dashboard) is done on branch
+feat/p10-should-haves. Ask the user whether to merge to main first.
+Then start P11 (stretch, in priority order): S5 variance alerts beyond tolerance (list flagged
+runs + a banner on the dashboard), S1 purchase register + supplier ledger (data is there — the
+purchase model is populated, just no report yet), then optional polish (service-worker PWA shell,
+masters edit/deactivate, payments Idempotency-Key, Tally CSV export).
 Hard rules: benchmark stays green; no paid services; ask before pushing.
 ```

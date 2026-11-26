@@ -5,6 +5,23 @@ Each milestone adds a section. Commit hashes are in `git log`.
 
 ## [Unreleased]
 
+### Added (P10 should-haves)
+- `reports.service.gst_summary` + `/reports/gst-summary`: non-cancelled invoices of the period with
+  their tax split; the totals row is GSTR-3B table 3.1(a) (taxable + CGST + SGST + IGST + total).
+- `reports.service.hsn_summary` + `/reports/hsn-summary`: invoice lines grouped by (HSN × UOM ×
+  rate), the GSTR-1 table 12 shape.
+- `reports.service.payments_register` + `/reports/payments-register`: every receipt of the period
+  with its invoice allocations spelled out ("applied to INV-x").
+- `reports.service.ageing` + `/reports/ageing`: each unpaid, non-cancelled invoice bucketed by
+  (`to` − invoice_date) into 0-30 / 31-60 / 61-90 / 91+ days; outstanding derived from allocations,
+  the same source of truth payments.service uses.
+- `reports.service.dashboard` + `/reports/dashboard`: at-a-glance numbers for the owner (FG qty +
+  value, pending orders, sales + collections + outstanding, completed runs).
+- Frontend `DashboardPage` (`/dashboard`, owner + admin): four metric cards, FG-on-hand list,
+  compact ageing panel. Owner's `HOME` is now `/dashboard`.
+- Frontend `StockPage`: tab bar across all eight reports with inline rendering from the shared
+  `{columns, rows, totals}` envelope — one `ReportTable` component, no per-report code.
+
 ### Added (UI upgrade — design direction C "Pouch & Process")
 - Design tokens: turmeric / chilli / leaf / choc palette + cream / paper backgrounds in `tailwind.config.js`;
   keyframes `pop`, `flow`, `fade-in`, `spin-slow`; self-hosted Bricolage Grotesque + Hind Madurai (fontsource).

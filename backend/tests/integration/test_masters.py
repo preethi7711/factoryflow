@@ -135,3 +135,127 @@ def test_new_product_and_bom_in_kitchen_units(client, as_user) -> None:
 
     again = client.post(f"{API}/boms", json={**bom, "code": "PAKODA-200G-V2"}, headers=admin)
     assert (again.status_code, again.json()["error"]["code"]) == (409, "BOM_EXISTS")
+
+
+# ---- P11: edit and deactivate masters ---------------------------------------------------
+
+
+def test_edit_an_items_price_and_tolerance(client, as_user) -> None:
+    admin = as_user("admin")
+    murukku = _one(client, admin, "items", "MURUKKU-200G")
+    r = client.patch(
+        f"{API}/items/{murukku['id']}",
+        json={"sale_price_paise": 5500, "variance_tol_bp": 500},
+        headers=admin,
+    )
+    assert r.status_code == 200, r.text
+    assert (r.json()["sale_price_paise"], r.json()["variance_tol_bp"]) == (5500, 500)
+    # The price list the salesman sees reflects the new price.
+    prices = {p["code"]: p for p in client.get(f"{API}/price-list", headers=admin).json()}
+    assert prices["MURUKKU-200G"]["sale_price_paise"] == 5500
+    # And the edit is audit-logged with before/after.
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT action, before, after FROM audit_log "
+                "WHERE entity = 'item' AND entity_id = :id ORDER BY id"
+            ),
+            {"id": murukku["id"]},
+        ).all()
+        assert [a for a, *_ in rows][-1] == "UPDATE"
+        _, before, after = rows[-1]
+        assert before["sale_price_paise"] == 5000 and after["sale_price_paise"] == 5500
+
+
+def test_deactivated_item_drops_out_of_lists_and_price_list(client, as_user) -> None:
+    admin = as_user("admin")
+    murukku = _one(client, admin, "items", "MURUKKU-200G")
+    assert (
+        client.patch(
+            f"{API}/items/{murukku['id']}", json={"is_active": False}, headers=admin
+        ).status_code
+        == 200
+    )
+    # Not in the default list.
+    codes = [r["code"] for r in client.get(f"{API}/items", headers=admin).json()]
+    assert "MURUKKU-200G" not in codes
+    # Gone from the price list the salesman sees (what you can sell today).
+    assert all(
+        r["code"] != "MURUKKU-200G"
+        for r in client.get(f"{API}/price-list", headers=as_user("salesman_a")).json()
+    )
+    # Visible again with include_inactive=true (the admin can reactivate).
+    all_rows = client.get(f"{API}/items", params={"include_inactive": "true"}, headers=admin).json()
+    assert any(r["code"] == "MURUKKU-200G" and r["is_active"] is False for r in all_rows)
+    # Reactivate.
+    assert (
+        client.patch(
+            f"{API}/items/{murukku['id']}", json={"is_active": True}, headers=admin
+        ).status_code
+        == 200
+    )
+    codes_again = [r["code"] for r in client.get(f"{API}/items", headers=admin).json()]
+    assert "MURUKKU-200G" in codes_again
+
+
+def test_edit_a_customer_and_reassign_the_salesman(client, as_user) -> None:
+    admin = as_user("admin")
+    retailer = _one(client, admin, "customers", "RETAILER-A")
+    salesman_b = client.get(
+        f"{API}/customers", params={"code": "DISTRIBUTOR-B"}, headers=admin
+    ).json()[0]["salesman_id"]
+    r = client.patch(
+        f"{API}/customers/{retailer['id']}",
+        json={"address": "New shop road", "salesman_id": salesman_b},
+        headers=admin,
+    )
+    assert r.status_code == 200, r.text
+    assert (r.json()["address"], r.json()["salesman_id"]) == ("New shop road", salesman_b)
+
+
+def test_cannot_assign_a_non_salesman_to_a_customer(client, as_user) -> None:
+    admin = as_user("admin")
+    retailer = _one(client, admin, "customers", "RETAILER-A")
+    admin_id = client.get(f"{API}/auth/me", headers=admin).json()["id"]
+    r = client.patch(
+        f"{API}/customers/{retailer['id']}", json={"salesman_id": admin_id}, headers=admin
+    )
+    assert (r.status_code, r.json()["error"]["code"]) == (422, "INVALID_SALESMAN")
+
+
+def test_deactivated_supplier_drops_out_of_default_list(client, as_user) -> None:
+    admin = as_user("admin")
+    supplier = _one(client, admin, "suppliers", "FLOUR-SUPPLIER")
+    assert (
+        client.patch(
+            f"{API}/suppliers/{supplier['id']}", json={"is_active": False}, headers=admin
+        ).status_code
+        == 200
+    )
+    codes = [s["code"] for s in client.get(f"{API}/suppliers", headers=admin).json()]
+    assert "FLOUR-SUPPLIER" not in codes
+    # But a purchase register over the past still shows historical purchases from them — the ledger
+    # and the stored purchase.supplier_id don't look at is_active.
+
+
+@pytest.mark.parametrize("role", ["salesman_a", "production", "accountant", "owner"])
+def test_only_admin_can_patch_a_master(client, as_user, role) -> None:
+    admin = as_user("admin")
+    retailer = _one(client, admin, "customers", "RETAILER-A")
+    r = client.patch(
+        f"{API}/customers/{retailer['id']}", json={"name": "Nope"}, headers=as_user(role)
+    )
+    assert r.status_code == 403
+
+
+def test_patch_unknown_master_is_404(client, as_user) -> None:
+    admin = as_user("admin")
+    assert client.patch(f"{API}/items/999999", json={"name": "X"}, headers=admin).status_code == 404
+    assert (
+        client.patch(f"{API}/customers/999999", json={"name": "X"}, headers=admin).status_code
+        == 404
+    )
+    assert (
+        client.patch(f"{API}/suppliers/999999", json={"name": "X"}, headers=admin).status_code
+        == 404
+    )

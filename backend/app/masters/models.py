@@ -68,6 +68,7 @@ class Item(Base):
     pack_size: Mapped[str | None] = mapped_column(String(40))
     variance_tol_bp: Mapped[int] = mapped_column(default=300)
     shelf_life_days: Mapped[int | None]
+    is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     units: Mapped[list["ItemUnit"]] = relationship(
@@ -148,6 +149,7 @@ class Customer(Base):
     state_code: Mapped[str] = mapped_column(String(2))  # place of supply for GST
     address: Mapped[str | None] = mapped_column(Text)
     salesman_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))  # assigned rep
+    is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -160,4 +162,5 @@ class Supplier(Base):
     name: Mapped[str] = mapped_column(String(120))
     gstin: Mapped[str | None] = mapped_column(String(15))
     state_code: Mapped[str] = mapped_column(String(2))
+    is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

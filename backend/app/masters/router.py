@@ -13,12 +13,17 @@ from app.masters.schemas import (
     CustomerCreate,
     CustomerCreated,
     CustomerOut,
+    CustomerUpdate,
+    CustomerUpdated,
     ItemCreate,
     ItemOut,
+    ItemUpdate,
     PriceListRow,
     SupplierCreate,
     SupplierCreated,
     SupplierOut,
+    SupplierUpdate,
+    SupplierUpdated,
 )
 
 router = APIRouter(tags=["masters"])
@@ -35,14 +40,23 @@ Admin = Annotated[AppUser, Depends(require_roles(Role.ADMIN))]
 
 @router.get("/items", response_model=list[ItemOut])
 def list_items(
-    db: DbSession, user: MasterReader, code: str | None = None, kind: ItemKind | None = None
+    db: DbSession,
+    user: MasterReader,
+    code: str | None = None,
+    kind: ItemKind | None = None,
+    include_inactive: bool = False,
 ) -> list[Item]:
-    return service.list_items(db, code=code, kind=kind)
+    return service.list_items(db, code=code, kind=kind, include_inactive=include_inactive)
 
 
 @router.post("/items", response_model=ItemOut, status_code=status.HTTP_201_CREATED)
 def create_item(body: ItemCreate, db: DbSession, user: Admin) -> Item:
     return service.create_item(db, body, user)
+
+
+@router.patch("/items/{item_id}", response_model=ItemOut)
+def update_item(item_id: int, body: ItemUpdate, db: DbSession, user: Admin) -> Item:
+    return service.update_item(db, item_id, body, user)
 
 
 @router.get("/price-list", response_model=list[PriceListRow])
@@ -63,8 +77,10 @@ def price_list(db: DbSession, user: SalesReader) -> list[PriceListRow]:
 
 
 @router.get("/customers", response_model=list[CustomerOut])
-def list_customers(db: DbSession, user: SalesReader, code: str | None = None) -> list:
-    return service.list_customers(db, code=code)
+def list_customers(
+    db: DbSession, user: SalesReader, code: str | None = None, include_inactive: bool = False
+) -> list:
+    return service.list_customers(db, code=code, include_inactive=include_inactive)
 
 
 @router.post("/customers", response_model=CustomerCreated, status_code=status.HTTP_201_CREATED)
@@ -73,15 +89,33 @@ def create_customer(body: CustomerCreate, db: DbSession, user: Admin) -> Custome
     return CustomerCreated(**CustomerOut.model_validate(customer).model_dump(), warnings=warnings)
 
 
+@router.patch("/customers/{customer_id}", response_model=CustomerUpdated)
+def update_customer(
+    customer_id: int, body: CustomerUpdate, db: DbSession, user: Admin
+) -> CustomerUpdated:
+    customer, warnings = service.update_customer(db, customer_id, body, user)
+    return CustomerUpdated(**CustomerOut.model_validate(customer).model_dump(), warnings=warnings)
+
+
 @router.get("/suppliers", response_model=list[SupplierOut])
-def list_suppliers(db: DbSession, user: MasterReader, code: str | None = None) -> list:
-    return service.list_suppliers(db, code=code)
+def list_suppliers(
+    db: DbSession, user: MasterReader, code: str | None = None, include_inactive: bool = False
+) -> list:
+    return service.list_suppliers(db, code=code, include_inactive=include_inactive)
 
 
 @router.post("/suppliers", response_model=SupplierCreated, status_code=status.HTTP_201_CREATED)
 def create_supplier(body: SupplierCreate, db: DbSession, user: Admin) -> SupplierCreated:
     supplier, warnings = service.create_supplier(db, body, user)
     return SupplierCreated(**SupplierOut.model_validate(supplier).model_dump(), warnings=warnings)
+
+
+@router.patch("/suppliers/{supplier_id}", response_model=SupplierUpdated)
+def update_supplier(
+    supplier_id: int, body: SupplierUpdate, db: DbSession, user: Admin
+) -> SupplierUpdated:
+    supplier, warnings = service.update_supplier(db, supplier_id, body, user)
+    return SupplierUpdated(**SupplierOut.model_validate(supplier).model_dump(), warnings=warnings)
 
 
 @router.get("/boms", response_model=list[BomOut])

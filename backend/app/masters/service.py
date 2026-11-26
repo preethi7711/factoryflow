@@ -26,10 +26,13 @@ from app.masters.schemas import (
     BomOut,
     CustomerCreate,
     CustomerOut,
+    CustomerUpdate,
     ItemCreate,
     ItemOut,
+    ItemUpdate,
     SupplierCreate,
     SupplierOut,
+    SupplierUpdate,
 )
 
 
@@ -65,12 +68,20 @@ def get_company(db: Session) -> CompanySettings:
 # ---- items ---------------------------------------------------------------------------
 
 
-def list_items(db: Session, *, code: str | None = None, kind: str | None = None) -> list[Item]:
+def list_items(
+    db: Session,
+    *,
+    code: str | None = None,
+    kind: str | None = None,
+    include_inactive: bool = False,
+) -> list[Item]:
     q = select(Item).options(selectinload(Item.units)).order_by(Item.code)
     if code:
         q = q.where(Item.code == code)
     if kind:
         q = q.where(Item.kind == kind)
+    if not include_inactive:
+        q = q.where(Item.is_active)
     return list(db.scalars(q))
 
 
@@ -122,7 +133,31 @@ def create_item(db: Session, data: ItemCreate, user: AppUser) -> Item:
 
 
 def price_list(db: Session) -> list[Item]:
-    return list(db.scalars(select(Item).where(Item.kind == ItemKind.FG).order_by(Item.code)))
+    # An inactive FG must not be sold any more — hide it from the salesman's price list.
+    return list(
+        db.scalars(select(Item).where(Item.kind == ItemKind.FG, Item.is_active).order_by(Item.code))
+    )
+
+
+def update_item(db: Session, item_id: int, data: ItemUpdate, user: AppUser) -> Item:
+    item = get_item(db, item_id)
+    before = ItemOut.model_validate(item).model_dump(mode="json")
+    changes = data.model_dump(exclude_unset=True)
+    for field, value in changes.items():
+        setattr(item, field, value)
+    db.flush()
+    after = ItemOut.model_validate(item).model_dump(mode="json")
+    audit.record(
+        db,
+        entity="item",
+        entity_id=item.id,
+        action="UPDATE",
+        user_id=user.id,
+        before=before,
+        after=after,
+    )
+    db.commit()
+    return item
 
 
 # ---- customers and suppliers ---------------------------------------------------------
@@ -135,10 +170,14 @@ def get_customer(db: Session, customer_id: int) -> Customer:
     return customer
 
 
-def list_customers(db: Session, *, code: str | None = None) -> list[Customer]:
+def list_customers(
+    db: Session, *, code: str | None = None, include_inactive: bool = False
+) -> list[Customer]:
     q = select(Customer).order_by(Customer.code)
     if code:
         q = q.where(Customer.code == code)
+    if not include_inactive:
+        q = q.where(Customer.is_active)
     return list(db.scalars(q))
 
 
@@ -159,6 +198,35 @@ def create_customer(db: Session, data: CustomerCreate, user: AppUser) -> tuple[C
     return customer, gstin_warnings(data.gstin, data.state_code)
 
 
+def update_customer(
+    db: Session, customer_id: int, data: CustomerUpdate, user: AppUser
+) -> tuple[Customer, list[str]]:
+    customer = get_customer(db, customer_id)
+    before = CustomerOut.model_validate(customer).model_dump(mode="json")
+    changes = data.model_dump(exclude_unset=True)
+    if "salesman_id" in changes and changes["salesman_id"] is not None:
+        rep = get_active_user(db, changes["salesman_id"])
+        if rep is None or rep.role != Role.SALESMAN:
+            raise AppError(
+                422, "INVALID_SALESMAN", f"user {changes['salesman_id']} is not a salesman"
+            )
+    for field, value in changes.items():
+        setattr(customer, field, value)
+    db.flush()
+    after = CustomerOut.model_validate(customer).model_dump(mode="json")
+    audit.record(
+        db,
+        entity="customer",
+        entity_id=customer.id,
+        action="UPDATE",
+        user_id=user.id,
+        before=before,
+        after=after,
+    )
+    db.commit()
+    return customer, gstin_warnings(customer.gstin, customer.state_code)
+
+
 def get_supplier(db: Session, supplier_id: int) -> Supplier:
     supplier = db.get(Supplier, supplier_id)
     if supplier is None:
@@ -166,10 +234,14 @@ def get_supplier(db: Session, supplier_id: int) -> Supplier:
     return supplier
 
 
-def list_suppliers(db: Session, *, code: str | None = None) -> list[Supplier]:
+def list_suppliers(
+    db: Session, *, code: str | None = None, include_inactive: bool = False
+) -> list[Supplier]:
     q = select(Supplier).order_by(Supplier.code)
     if code:
         q = q.where(Supplier.code == code)
+    if not include_inactive:
+        q = q.where(Supplier.is_active)
     return list(db.scalars(q))
 
 
@@ -184,6 +256,28 @@ def create_supplier(db: Session, data: SupplierCreate, user: AppUser) -> tuple[S
     )
     db.commit()
     return supplier, gstin_warnings(data.gstin, data.state_code)
+
+
+def update_supplier(
+    db: Session, supplier_id: int, data: SupplierUpdate, user: AppUser
+) -> tuple[Supplier, list[str]]:
+    supplier = get_supplier(db, supplier_id)
+    before = SupplierOut.model_validate(supplier).model_dump(mode="json")
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(supplier, field, value)
+    db.flush()
+    after = SupplierOut.model_validate(supplier).model_dump(mode="json")
+    audit.record(
+        db,
+        entity="supplier",
+        entity_id=supplier.id,
+        action="UPDATE",
+        user_id=user.id,
+        before=before,
+        after=after,
+    )
+    db.commit()
+    return supplier, gstin_warnings(supplier.gstin, supplier.state_code)
 
 
 # ---- BOMs ----------------------------------------------------------------------------

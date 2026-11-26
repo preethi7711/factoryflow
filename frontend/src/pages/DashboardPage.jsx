@@ -76,6 +76,13 @@ export default function DashboardPage() {
 
       <Banner>{error}</Banner>
 
+      {dash && dash.flagged_variances > 0 && (
+        <Banner kind="info">
+          {dash.flagged_variances} variance{dash.flagged_variances === 1 ? " is" : "s are"}{" "}
+          beyond tolerance this period. See <strong>Stock &amp; reports → Variance alerts</strong>.
+        </Banner>
+      )}
+
       {dash && (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

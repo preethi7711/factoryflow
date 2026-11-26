@@ -777,6 +777,143 @@ def variance_alerts(db: Session, start: date, end: date) -> Report:
     )
 
 
+# ---- Tally day book (P11 stretch, Tally CSV export) ----------------------------------
+#
+# A day book an accountant can paste into Tally's Voucher Register import. One row per voucher
+# (non-cancelled Sales invoice, Purchase, Receipt), sorted chronologically. Dates are formatted as
+# DD-MM-YYYY (Tally's standard). Amounts stay integer paise on the wire; the accountant divides
+# by 100 at import time (same convention Tally's CSV uses).
+#
+# Cancelled sales invoices are excluded — same as `gst-summary` and `hsn-summary` — so the three
+# reports match what a GSTR filer would see for the period. A later ticket can add credit-note
+# rows if the business wants the full double-entry trail here.
+
+
+def _tally_date(d: date) -> str:
+    return d.strftime("%d-%m-%Y")
+
+
+def tally_daybook(db: Session, start: date, end: date) -> Report:
+    rows: list[dict] = []
+    totals = {"taxable_paise": 0, "tax_paise": 0, "amount_paise": 0}
+
+    # Sales invoices (non-cancelled).
+    for inv in db.scalars(
+        select(Invoice)
+        .where(
+            Invoice.invoice_date >= start,
+            Invoice.invoice_date <= end,
+            Invoice.status != InvoiceStatus.CANCELLED.value,
+        )
+        .order_by(Invoice.invoice_date, Invoice.id)
+    ):
+        customer = masters.get_customer(db, inv.customer_id)
+        tax = inv.cgst_paise + inv.sgst_paise + inv.igst_paise
+        rows.append(
+            {
+                "date": _tally_date(inv.invoice_date),
+                "sort_date": inv.invoice_date.isoformat(),
+                "voucher_type": "Sales",
+                "voucher_no": inv.invoice_no,
+                "party_code": customer.code,
+                "party_name": customer.name,
+                "gstin": customer.gstin or "",
+                "taxable_paise": inv.taxable_paise,
+                "cgst_paise": inv.cgst_paise,
+                "sgst_paise": inv.sgst_paise,
+                "igst_paise": inv.igst_paise,
+                "amount_paise": inv.total_paise,
+                "narration": f"Sales to {customer.code} ({inv.supply_type})",
+            }
+        )
+        totals["taxable_paise"] += inv.taxable_paise
+        totals["tax_paise"] += tax
+        totals["amount_paise"] += inv.total_paise
+
+    # Purchases (every one in the period; purchases aren't cancellable in this prototype).
+    for pur in db.scalars(
+        select(Purchase)
+        .where(Purchase.purchase_date >= start, Purchase.purchase_date <= end)
+        .order_by(Purchase.purchase_date, Purchase.id)
+    ):
+        supplier = masters.get_supplier(db, pur.supplier_id)
+        tax = pur.cgst_paise + pur.sgst_paise + pur.igst_paise
+        rows.append(
+            {
+                "date": _tally_date(pur.purchase_date),
+                "sort_date": pur.purchase_date.isoformat(),
+                "voucher_type": "Purchase",
+                "voucher_no": pur.bill_no or f"P-{pur.id}",
+                "party_code": supplier.code,
+                "party_name": supplier.name,
+                "gstin": supplier.gstin or "",
+                "taxable_paise": pur.taxable_paise,
+                "cgst_paise": pur.cgst_paise,
+                "sgst_paise": pur.sgst_paise,
+                "igst_paise": pur.igst_paise,
+                "amount_paise": pur.total_paise,
+                "narration": f"Purchase from {supplier.code} ({pur.supply_type})",
+            }
+        )
+        totals["taxable_paise"] += pur.taxable_paise
+        totals["tax_paise"] += tax
+        totals["amount_paise"] += pur.total_paise
+
+    # Receipts (customer payments).
+    for pay in db.scalars(
+        select(Payment)
+        .where(Payment.payment_date >= start, Payment.payment_date <= end)
+        .order_by(Payment.payment_date, Payment.id)
+    ):
+        customer = masters.get_customer(db, pay.customer_id)
+        rows.append(
+            {
+                "date": _tally_date(pay.payment_date),
+                "sort_date": pay.payment_date.isoformat(),
+                "voucher_type": "Receipt",
+                "voucher_no": f"R-{pay.id}",
+                "party_code": customer.code,
+                "party_name": customer.name,
+                "gstin": customer.gstin or "",
+                "taxable_paise": 0,
+                "cgst_paise": 0,
+                "sgst_paise": 0,
+                "igst_paise": 0,
+                "amount_paise": pay.amount_paise,
+                "narration": f"Receipt from {customer.code}"
+                + (f" ref {pay.reference}" if pay.reference else ""),
+            }
+        )
+        totals["amount_paise"] += pay.amount_paise
+
+    rows.sort(key=lambda r: (r["sort_date"], r["voucher_type"], r["voucher_no"]))
+    # sort_date was only for ordering; the user sees the Tally-formatted date.
+    for r in rows:
+        r.pop("sort_date", None)
+
+    return Report(
+        name="tally-daybook",
+        from_=start,
+        to=end,
+        columns=_cols(
+            ("date", "Date"),
+            ("voucher_type", "Voucher type"),
+            ("voucher_no", "Voucher no."),
+            ("party_code", "Party"),
+            ("party_name", "Party name"),
+            ("gstin", "GSTIN"),
+            ("taxable_paise", "Taxable (paise)"),
+            ("cgst_paise", "CGST"),
+            ("sgst_paise", "SGST"),
+            ("igst_paise", "IGST"),
+            ("amount_paise", "Amount (paise)"),
+            ("narration", "Narration"),
+        ),
+        rows=rows,
+        totals=totals,
+    )
+
+
 BUILDERS = {
     "sales-register": sales_register,
     "stock-summary": stock_summary,
@@ -788,4 +925,5 @@ BUILDERS = {
     "ageing": ageing,
     "purchase-register": purchase_register,
     "variance-alerts": variance_alerts,
+    "tally-daybook": tally_daybook,
 }

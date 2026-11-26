@@ -44,6 +44,7 @@ const TABS = [
   ["ageing", "Ageing"],
   ["production", "Production"],
   ["variance-alerts", "Variance alerts"],
+  ["tally-daybook", "Tally day book"],
   ["stock-ledger", "Ledger"],
 ];
 

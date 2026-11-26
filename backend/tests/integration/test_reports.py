@@ -213,3 +213,34 @@ def test_reports_are_not_for_sales_or_production(flow):
 
 def test_unknown_report_is_404(flow):
     assert _report(flow, "nonsense").status_code == 404
+
+
+def test_tally_daybook_lists_sales_purchase_and_receipt_vouchers(flow):
+    body = _report(flow, "tally-daybook").json()
+    assert body["name"] == "tally-daybook"
+    types = [r["voucher_type"] for r in body["rows"]]
+    # The benchmark flow runs one of each: a purchase (step 1), a sales invoice (step 6), and a
+    # receipt (step 7). They must all appear in the day book.
+    assert sorted(types) == ["Purchase", "Receipt", "Sales"]
+    # Dates are formatted DD-MM-YYYY, the shape Tally expects.
+    for row in body["rows"]:
+        assert row["date"].count("-") == 2 and len(row["date"]) == 10
+    # Totals: sales taxable 750000, sales tax 37500 (CGST+SGST), purchase 270000 (no input GST in
+    # the benchmark seed), receipt 400000 amount. amount = 787500 + 270000 + 400000 = 1_457_500.
+    assert body["totals"]["taxable_paise"] == 1_020_000  # 750000 + 270000
+    assert body["totals"]["tax_paise"] == 37500
+    assert body["totals"]["amount_paise"] == 1_457_500
+
+
+def test_tally_daybook_csv_export_round_trip(flow):
+    csv = _report(flow, "tally-daybook", format="csv")
+    assert csv.status_code == 200
+    assert csv.headers["content-type"].startswith("text/csv")
+    lines = csv.text.splitlines()
+    header = lines[0]
+    assert "Voucher type" in header and "Voucher no." in header
+    # Three vouchers + header + totals row.
+    assert len(lines) == 5
+    # The totals row is labelled "TOTAL" in the first column and carries the amount sum.
+    assert lines[-1].startswith("TOTAL")
+    assert ",1457500," in lines[-1]

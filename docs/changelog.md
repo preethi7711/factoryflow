@@ -5,6 +5,15 @@ Each milestone adds a section. Commit hashes are in `git log`.
 
 ## [Unreleased]
 
+### Added (P11 stretch — Tally day book)
+- `reports.service.tally_daybook` + `GET /reports/tally-daybook`: one row per voucher in period
+  (non-cancelled Sales invoices, Purchases, customer Receipts), sorted chronologically. Dates are
+  formatted DD-MM-YYYY, Tally's standard. Amounts stay integer paise on the wire (the accountant
+  divides by 100 at import). Cancelled sales are excluded, matching the GST summaries.
+- StockPage tab bar: new "Tally day book" tab (11 tabs total). Download via the shared CSV/XLSX
+  pipeline — no bespoke exporter needed.
+- 2 new integration tests (daybook row shape, CSV totals).
+
 ### Added (P11 stretch — masters edit/deactivate)
 - Migration `c932ce0a5ca4`: adds `is_active BOOLEAN NOT NULL DEFAULT TRUE` to `item`, `customer`,
   `supplier`. Existing rows become active; no behaviour change until an admin edits one.

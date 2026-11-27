@@ -33,6 +33,7 @@ USERS = [  # spec section 2
 ]
 
 # code, name, kind, base unit, opening (qty, unit, rate in paise per that unit)
+# --- Benchmark materials (PROBLEM.md §5) — do not change ---
 MATERIALS = [
     ("FLOUR", "Flour", "RAW", "g", ("100", "kg", 4200)),
     ("OIL", "Cooking oil", "RAW", "ml", ("30", "l", 14000)),
@@ -40,7 +41,15 @@ MATERIALS = [
     ("POUCH-200G", "200 g pouch", "PACKAGING", "pcs", ("500", "pcs", 250)),
     ("CARTON", "Carton (holds 20 packets)", "PACKAGING", "pcs", ("30", "pcs", 1500)),
 ]
-BOM_LINES = [  # one batch = 200 packets expected
+# --- Extra raw materials for Mixture and Chips ---
+EXTRA_MATERIALS = [
+    ("RICE-FLAKES", "Rice flakes (Poha)", "RAW", "g", ("50", "kg", 3000)),
+    ("PEANUT", "Peanuts", "RAW", "g", ("20", "kg", 8000)),
+    ("BANANA-RAW", "Raw bananas", "RAW", "g", ("30", "kg", 2500)),
+]
+
+# Benchmark BOM: Murukku 200 g, one batch = 200 packets
+BOM_LINES = [
     ("FLOUR", "40", "kg"),
     ("OIL", "10", "l"),
     ("SPICE-MIX", "1.2", "kg"),
@@ -49,6 +58,39 @@ BOM_LINES = [  # one batch = 200 packets expected
 ]
 BATCH_OUTPUT = Decimal(200)
 OPENING_FG_PACKETS = Decimal(50)
+
+# Extra FG items: (code, name, sale_price_paise, opening_qty, bom_code, bom_lines)
+EXTRA_FG = [
+    (
+        "MIXTURE-200G",
+        "Mixture 200 g",
+        5500,
+        Decimal(30),
+        "MIXTURE-200G-STD",
+        [
+            ("RICE-FLAKES", "25", "kg"),
+            ("PEANUT", "10", "kg"),
+            ("OIL", "8", "l"),
+            ("SPICE-MIX", "1.2", "kg"),
+            ("POUCH-200G", "200", "pcs"),
+            ("CARTON", "10", "pcs"),
+        ],
+    ),
+    (
+        "CHIPS-200G",
+        "Banana Chips 200 g",
+        6000,
+        Decimal(20),
+        "CHIPS-200G-STD",
+        [
+            ("BANANA-RAW", "60", "kg"),
+            ("OIL", "15", "l"),
+            ("SPICE-MIX", "0.5", "kg"),
+            ("POUCH-200G", "200", "pcs"),
+            ("CARTON", "10", "pcs"),
+        ],
+    ),
+]
 
 
 def run(db: Session | None = None) -> bool:
@@ -86,30 +128,46 @@ def _seed(db: Session) -> None:
         )
     )
 
-    items = {
-        code: Item(code=code, name=name, kind=kind, base_uom=base, gst_rate_bp=0)
-        for code, name, kind, base, _ in MATERIALS
-    }
+    # Raw and packaging items (benchmark + extra)
+    items: dict[str, Item] = {}
+    for code, name, kind, base, _ in MATERIALS + EXTRA_MATERIALS:
+        items[code] = Item(code=code, name=name, kind=kind, base_uom=base, gst_rate_bp=0)
+
+    # Finished goods
     items["MURUKKU-200G"] = Item(
         code="MURUKKU-200G",
         name="Murukku 200 g",
         kind="FG",
         base_uom="pkt",
         hsn="2106",
-        gst_rate_bp=500,  # 5% for this exercise
-        sale_price_paise=5000,  # Rs 50 per packet before tax
+        gst_rate_bp=500,
+        sale_price_paise=5000,
         pack_size="200 g",
-        shelf_life_days=90,  # A16: not given in the brief
+        shelf_life_days=90,
         units=[ItemUnit(uom="carton", factor=Decimal(20))],
     )
+    for code, name, sale_price_paise, _opening, _bom_code, _bom_lines in EXTRA_FG:
+        items[code] = Item(
+            code=code,
+            name=name,
+            kind="FG",
+            base_uom="pkt",
+            hsn="2106",
+            gst_rate_bp=500,
+            sale_price_paise=sale_price_paise,
+            pack_size="200 g",
+            shelf_life_days=90,
+            units=[ItemUnit(uom="carton", factor=Decimal(20))],
+        )
+
     db.add_all(items.values())
     db.flush()
 
-    murukku = items["MURUKKU-200G"]
+    # Murukku BOM (benchmark)
     db.add(
         Bom(
             code="MURUKKU-200G-STD",
-            item_id=murukku.id,
+            item_id=items["MURUKKU-200G"].id,
             output_qty=BATCH_OUTPUT,
             lines=[
                 BomLine(item_id=items[code].id, qty=to_base(qty, uom, items[code].base_uom))
@@ -117,6 +175,20 @@ def _seed(db: Session) -> None:
             ],
         )
     )
+    # Extra product BOMs
+    for fg_code, _, _, _, bom_code, bom_lines in EXTRA_FG:
+        db.add(
+            Bom(
+                code=bom_code,
+                item_id=items[fg_code].id,
+                output_qty=BATCH_OUTPUT,
+                lines=[
+                    BomLine(item_id=items[code].id, qty=to_base(qty, uom, items[code].base_uom))
+                    for code, qty, uom in bom_lines
+                ],
+            )
+        )
+
     db.add_all(
         [  # spec section 2: salesman_a owns Retailer A, salesman_b owns Distributor B
             Customer(
@@ -133,44 +205,75 @@ def _seed(db: Session) -> None:
                 state_code="29",  # Karnataka: IGST
                 salesman_id=users["salesman_b"].id,
             ),
+            Customer(
+                code="RETAILER-C",
+                name="Retailer C",
+                gstin="32ABCDE9999H1Z1",
+                state_code="32",  # Kerala: IGST
+                salesman_id=users["salesman_a"].id,
+            ),
             Supplier(
                 code="FLOUR-SUPPLIER",
                 name="Flour Supplier",
                 gstin="33BBBBB2222B1Z2",
                 state_code="33",
             ),
+            Supplier(
+                code="SNACK-INGREDIENTS",
+                name="South Indian Ingredients Supplier",
+                gstin="33CCCCC3333C1Z3",
+                state_code="33",
+            ),
         ]
     )
     db.flush()
 
-    # Opening stock, valued at the opening rates.
-    rates = {code: (qty, uom, rate) for code, _, _, _, (qty, uom, rate) in MATERIALS}
-    lines = [
+    # Opening stock: all materials (benchmark + extra) + all FG items
+    all_rates = {
+        code: (qty, uom, rate) for code, _, _, _, (qty, uom, rate) in MATERIALS + EXTRA_MATERIALS
+    }
+    opening_lines = [
         OpeningLine(
             item_id=items[code].id,
             qty=to_base(qty, uom, items[code].base_uom),
             value_paise=receipt_value(Decimal(qty), rate),
         )
-        for code, (qty, uom, rate) in rates.items()
+        for code, (qty, uom, rate) in all_rates.items()
     ]
-    # A5: the 50 opening packets are valued at standard material cost at opening rates.
-    standard_batch = sum(
-        receipt_value(Decimal(qty), rates[code][2]) for code, qty, uom in BOM_LINES
+
+    # A5: Murukku opening FG at standard material cost
+    murukku_std_batch = sum(
+        receipt_value(Decimal(qty), all_rates[code][2]) for code, qty, uom in BOM_LINES
     )
-    standard_per_packet = cost_per_unit_paise(standard_batch, BATCH_OUTPUT)  # 1985 = Rs 19.85
-    lines.append(
+    murukku_std_per_pkt = cost_per_unit_paise(murukku_std_batch, BATCH_OUTPUT)  # 1985 = Rs 19.85
+    opening_lines.append(
         OpeningLine(
-            item_id=murukku.id,
+            item_id=items["MURUKKU-200G"].id,
             qty=OPENING_FG_PACKETS,
-            value_paise=int(OPENING_FG_PACKETS) * standard_per_packet,
+            value_paise=int(OPENING_FG_PACKETS) * murukku_std_per_pkt,
         )
     )
+
+    # Extra FG opening stock at standard material cost per product
+    for fg_code, _, _, opening_qty, _, bom_lines in EXTRA_FG:
+        std_batch = sum(
+            receipt_value(Decimal(qty), all_rates[code][2]) for code, qty, uom in bom_lines
+        )
+        std_per_pkt = cost_per_unit_paise(std_batch, BATCH_OUTPUT)
+        opening_lines.append(
+            OpeningLine(
+                item_id=items[fg_code].id,
+                qty=opening_qty,
+                value_paise=int(opening_qty) * std_per_pkt,
+            )
+        )
+
     post_opening_stock(
         db,
         as_of=OPENING_DATE,
         received_at=start_of_day(OPENING_DATE),
         user_id=users["admin"].id,
-        lines=lines,
+        lines=opening_lines,
     )
 
 

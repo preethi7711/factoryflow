@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { api } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
+import { useT } from "../LanguageContext.jsx";
 import PurchaseCard from "../components/PurchaseCard.jsx";
 import { CostBreakdown, ProcessLine, VarianceBars } from "../components/RunVisuals.jsx";
 import ItemArt from "../components/SnackArt.jsx";
@@ -30,6 +31,7 @@ const validQty = (s) => /^\d+(\.\d+)?$/.test(String(s).trim());
 
 export default function ProductionPage() {
   const { auth } = useAuth();
+  const t = useT();
   const token = auth.token;
   const runKey = `ff.run.${auth.username}`; // the last run this supervisor worked on
   const [boms, setBoms] = useState([]);
@@ -172,7 +174,7 @@ export default function ProductionPage() {
   return (
     <>
       <div className="flex flex-wrap items-end justify-between gap-2">
-        <h1 className="text-3xl font-extrabold">Production floor</h1>
+        <h1 className="text-3xl font-extrabold">{t("production")}</h1>
         {run && (
           <p className="text-sm text-choc-500">
             {run.run_no} · {run.item_code} · {Number(run.batches)} batch
@@ -186,7 +188,7 @@ export default function ProductionPage() {
       {run && run.status === "DRAFT" && (
         <Card title={`${run.run_no}: record output`}>
           <div className="space-y-3">
-            <Field label={`Good packets (expected ${Number(run.planned_qty)})`}>
+            <Field label={`${t("output")} (${t("planned")}: ${Number(run.planned_qty)})`}>
               <input
                 className={input}
                 inputMode="numeric"
@@ -196,17 +198,17 @@ export default function ProductionPage() {
             </Field>
             {packaging.length > 0 && (
               <QtyTable
-                caption="Packaging used (damaged ones included)"
+                caption={t("packaging")}
                 lines={packaging}
                 itemsById={itemsById}
                 cols={[
-                  ["Used", used, setUsed],
-                  ["Damaged", damaged, setDamaged, "0"],
+                  [t("actual"), used, setUsed],
+                  [t("damaged"), damaged, setDamaged, "0"],
                 ]}
               />
             )}
             <Button disabled={!output} onClick={complete}>
-              Complete run
+              {t("complete_run")}
             </Button>
           </div>
         </Card>
@@ -227,9 +229,9 @@ export default function ProductionPage() {
             </Card>
           )}
           {
-            <Card title="Overheads and cost">
+            <Card title={t("overheads")}>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Labour (₹)">
+                <Field label={t("labour")}>
                   <input
                     className={input}
                     inputMode="decimal"
@@ -237,7 +239,7 @@ export default function ProductionPage() {
                     onChange={(e) => setLabour(e.target.value)}
                   />
                 </Field>
-                <Field label="Gas / power (₹)">
+                <Field label={t("gas_power")}>
                   <input
                     className={input}
                     inputMode="decimal"
@@ -247,7 +249,7 @@ export default function ProductionPage() {
                 </Field>
               </div>
               <Button className="mt-3" variant="ghost" onClick={addOverheads}>
-                Add overheads
+                {t("save")}
               </Button>
               {cost && (
                 <div className="mt-4">
@@ -264,10 +266,10 @@ export default function ProductionPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         {!run || run.status === "COMPLETED" ? (
-          <Card title={run ? "Start the next run" : "Start a run"}>
+          <Card title={run ? t("new_run") : t("start_run")}>
             <div className="space-y-3">
               <div className="grid grid-cols-[1fr_7rem] gap-3">
-                <Field label="Recipe (BOM)">
+                <Field label={t("production_run")}>
                   <select
                     className={input}
                     value={bomId}
@@ -281,7 +283,7 @@ export default function ProductionPage() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Batches">
+                <Field label={t("batches")}>
                   <input
                     className={input}
                     inputMode="decimal"
@@ -297,10 +299,10 @@ export default function ProductionPage() {
               )}
               {raw.length > 0 && (
                 <QtyTable
-                  caption="Raw materials to issue now (planned = recipe × batches)"
+                  caption={t("raw_materials")}
                   lines={raw}
                   itemsById={itemsById}
-                  cols={[["Issued", issued, setIssued]]}
+                  cols={[[t("actual"), issued, setIssued]]}
                 />
               )}
               {packaging.length > 0 && (
@@ -310,7 +312,7 @@ export default function ProductionPage() {
                 </p>
               )}
               <Button disabled={!bom || !okBatches} onClick={start}>
-                Start run and issue raw materials
+                {t("start_run")}
               </Button>
             </div>
           </Card>
@@ -324,13 +326,14 @@ export default function ProductionPage() {
 
 // Planned column + one editable column per entry in `cols` ([label, values, setValues, default]).
 function QtyTable({ caption, lines, cols, itemsById }) {
+  const t = useT();
   return (
     <table className="w-full text-sm">
       <caption className="mb-1 text-left text-choc-500">{caption}</caption>
       <thead>
         <tr className="text-left text-choc-500">
-          <th className="py-1 font-medium">Item</th>
-          <th className="py-1 font-medium">Planned</th>
+          <th className="py-1 font-medium">{t("item")}</th>
+          <th className="py-1 font-medium">{t("planned")}</th>
           {cols.map(([label]) => (
             <th key={label} className="py-1 font-medium">
               {label}

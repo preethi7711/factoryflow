@@ -1,22 +1,23 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext.jsx";
+import { useLanguage } from "../LanguageContext.jsx";
 import { Logo } from "./SnackArt.jsx";
 
-// Which nav links each role sees (spec section 2).
+// Nav link keys map to i18n keys.
 const NAV = {
-  salesman: [["/order", "New order"]],
+  salesman: [["/order", "new_order"]],
   admin: [
-    ["/orders", "Orders"],
-    ["/stock", "Stock & reports"],
-    ["/dashboard", "Dashboard"],
-    ["/masters", "Masters"],
+    ["/orders", "orders"],
+    ["/stock", "stock_reports"],
+    ["/dashboard", "dashboard"],
+    ["/masters", "masters"],
   ],
-  production: [["/production", "Production"]],
-  auditor: [["/stock", "Stock & reports"]],
+  production: [["/production", "production"]],
+  auditor: [["/stock", "stock_reports"]],
   owner: [
-    ["/dashboard", "Dashboard"],
-    ["/stock", "Stock & reports"],
+    ["/dashboard", "dashboard"],
+    ["/stock", "stock_reports"],
   ],
 };
 
@@ -28,11 +29,11 @@ const ROLE_NAME = {
   owner: "Owner",
 };
 
-// The salesman works one-handed on a phone: a narrow column on warm cream. Desk roles get a wider page.
 const WIDTH = { salesman: "max-w-lg" };
 
 export default function Layout() {
   const { auth, logout } = useAuth();
+  const { t, toggle, lang } = useLanguage();
   const navigate = useNavigate();
   const role = auth?.role;
   const links = (role && NAV[role]) || [];
@@ -50,7 +51,7 @@ export default function Layout() {
               </span>
             </span>
             <nav className="flex gap-1 text-sm" aria-label="Main">
-              {links.map(([to, label]) => (
+              {links.map(([to, key]) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -62,13 +63,21 @@ export default function Layout() {
                     }`
                   }
                 >
-                  {label}
+                  {t(key)}
                 </NavLink>
               ))}
             </nav>
           </div>
           {auth && (
             <div className="flex shrink-0 items-center gap-3 text-sm">
+              {/* Language toggle: shows what you'll switch TO */}
+              <button
+                title={lang === "en" ? "Switch to Tamil" : "ஆங்கிலத்திற்கு மாறு"}
+                onClick={toggle}
+                className="rounded-full border border-line px-2.5 py-1 font-medium text-choc-500 hover:border-turmeric hover:text-choc-900"
+              >
+                {t("lang_toggle")}
+              </button>
               <span className="hidden text-right leading-tight text-choc-500 sm:block">
                 <span className="block font-medium text-choc-900">{auth.username}</span>
                 {ROLE_NAME[role] || role}
@@ -80,7 +89,7 @@ export default function Layout() {
                   navigate("/login");
                 }}
               >
-                Log out
+                {t("logout")}
               </button>
             </div>
           )}

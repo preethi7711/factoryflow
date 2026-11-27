@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { api, apiBlob } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
+import { useT } from "../LanguageContext.jsx";
 import { inr, localToday, toPaise } from "../format.js";
 import ItemArt from "../components/SnackArt.jsx";
 import { recall, remember } from "../memory.js";
@@ -22,6 +23,7 @@ function taxLine(t) {
 
 export default function AdminOrdersPage() {
   const { auth } = useAuth();
+  const t = useT();
   const token = auth.token;
   const [orders, setOrders] = useState([]);
   const [invoices, setInvoices] = useState({}); // orderId -> invoice (kept for this session)
@@ -167,13 +169,13 @@ export default function AdminOrdersPage() {
               ))}
             </ul>
             <div className="flex flex-wrap gap-2">
-              {o.status === "PENDING" && <Button onClick={() => approve(o)}>Approve</Button>}
-              {o.status === "APPROVED" && <Button onClick={() => invoice(o)}>Raise invoice</Button>}
+              {o.status === "PENDING" && <Button onClick={() => approve(o)}>{t("approve")}</Button>}
+              {o.status === "APPROVED" && <Button onClick={() => invoice(o)}>{t("invoice")}</Button>}
               {o.status === "INVOICED" && inv && (
                 <>
-                  <Button onClick={() => dispatch(o)}>Dispatch</Button>
+                  <Button onClick={() => dispatch(o)}>{t("dispatch")}</Button>
                   <Button variant="ghost" onClick={() => viewPdf(o)}>
-                    View invoice PDF
+                    {t("invoice")} PDF
                   </Button>
                 </>
               )}
@@ -187,9 +189,9 @@ export default function AdminOrdersPage() {
                     value={payAmount[o.id] ?? ""}
                     onChange={(e) => setPayAmount((m) => ({ ...m, [o.id]: e.target.value }))}
                   />
-                  <Button onClick={() => pay(o)}>Record payment</Button>
+                  <Button onClick={() => pay(o)}>{t("record_payment")}</Button>
                   <Button variant="ghost" onClick={() => viewPdf(o)}>
-                    View invoice PDF
+                    {t("invoice")} PDF
                   </Button>
                 </>
               )}

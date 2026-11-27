@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
+import { useT } from "../LanguageContext.jsx";
 import ItemArt from "../components/SnackArt.jsx";
 import { inr, localToday } from "../format.js";
 import { makeQueue } from "../offline/queue.js";
@@ -31,6 +32,7 @@ const STEP_NAME = {
 
 export default function OrderPage() {
   const { auth } = useAuth();
+  const t = useT();
   const token = auth.token;
   // One queue per salesman, so a shared phone (or the demo browser) never sends A's order as B.
   const queue = useMemo(
@@ -132,8 +134,8 @@ export default function OrderPage() {
     setMsg({
       kind: "success",
       text: online
-        ? "Order placed. Sending it to the factory."
-        : "Saved on this phone. It sends when you're back online.",
+        ? t("place_order") + " ✓"
+        : t("offline_queued"),
     });
     flush();
   }
@@ -156,10 +158,10 @@ export default function OrderPage() {
     <div className="space-y-4 pb-28">
       <Welcome name={fullName || auth.username} online={online} pending={pending} />
 
-      <Card title="Ordering for">
+      <Card title={t("customer")}>
         {customers.length === 0 ? (
           <p className="text-sm text-choc-500">
-            {online ? "Loading customers…" : "Customers load when you're online."}
+            {online ? t("loading") : t("offline_queued")}
           </p>
         ) : (
           <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Customer">
@@ -209,10 +211,10 @@ export default function OrderPage() {
       {msg && <Banner kind={msg.kind}>{msg.text}</Banner>}
 
       <Card
-        title="My orders"
+        title={t("your_orders")}
         actions={
           <Button variant="ghost" onClick={flush} className="min-h-[36px] px-3 py-1">
-            Sync now
+            {t("refresh")}
           </Button>
         }
       >
@@ -234,7 +236,7 @@ export default function OrderPage() {
             ))}
         </ul>
         {orders.length === 0 && items.length === 0 && (
-          <p className="text-sm text-choc-500">No orders yet. Your first one shows up here.</p>
+          <p className="text-sm text-choc-500">{t("no_orders")}</p>
         )}
       </Card>
 
@@ -265,21 +267,22 @@ export default function OrderPage() {
 }
 
 function Welcome({ name, online, pending }) {
+  const t = useT();
   return (
     <div className="relative overflow-hidden rounded-2xl bg-turmeric-500 px-4 py-4 text-choc-900">
       <div className="kolam absolute inset-0 opacity-40" aria-hidden="true" />
       <div className="relative flex items-center justify-between gap-3">
         <div>
           <p className="font-display text-2xl font-extrabold leading-tight">Vanakkam, {name}</p>
-          <p className="text-sm">Pick a customer, tap in packets, place the order.</p>
+          <p className="text-sm">{t("new_order")} — {t("customer")}, {t("quantity")}</p>
         </div>
         <ItemArt code="MURUKKU" className="h-16 w-16 shrink-0 motion-safe:animate-spin-slow" />
       </div>
       <div className="relative mt-3 flex flex-wrap gap-2">
         <Pill tone={online ? "ok" : "bad"}>
-          {online ? "Online" : "Offline: orders save on this phone"}
+          {online ? "Online" : t("offline_queued")}
         </Pill>
-        {pending > 0 && <Pill tone="wait">{pending} waiting to send</Pill>}
+        {pending > 0 && <Pill tone="wait">{pending} {t("offline_queued")}</Pill>}
       </div>
     </div>
   );
@@ -347,17 +350,18 @@ function StepButton({ label, children, ...props }) {
 
 // Sticky at the bottom, within thumb reach. The packet count pops each time it changes.
 function OrderBar({ packets, estimate, ready, onPlace }) {
+  const t = useT();
   return (
     <div className="fixed inset-x-0 bottom-0 z-10 px-3 pb-3">
       <div className="mx-auto flex max-w-lg items-center justify-between gap-3 rounded-2xl bg-choc-900 px-4 py-3 text-cream shadow-lg">
         <div className="leading-tight">
           <p key={packets} className="num animate-pop font-display text-xl font-extrabold">
-            {packets} {packets === 1 ? "packet" : "packets"}
+            {packets} {t("unit")}
           </p>
           <p className="num text-xs text-choc-100">{inr(estimate)} before GST</p>
         </div>
         <Button variant="accent" onClick={onPlace} disabled={!ready}>
-          Place order
+          {t("place_order")}
         </Button>
       </div>
     </div>

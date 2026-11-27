@@ -17,6 +17,40 @@ Built for the **NIT Tiruchirappalli Centre for Digital Infrastructure** internsh
 
 ---
 
+## What makes this stand out
+
+Most prototypes stop at "it works." These seven decisions go further — each one solves a real problem and can be explained in an interview.
+
+### 1. The stock ledger is enforced at the database level, not just in code
+
+The append-only rule isn't a comment in the application code. It's a **PostgreSQL trigger** that raises an error if anyone — a bug, a direct `psql` session, a future developer — tries to `UPDATE`, `DELETE` or `TRUNCATE` the `stock_movement` table. The result: stock can never silently drift. A test (`test_ledger_and_audit_log_are_append_only`) proves the trigger actually fires. Most factory-system demos trust application-layer discipline; this one proves it at the storage layer.
+
+### 2. Every rupee is an integer
+
+Money is stored as **integer paise** throughout — in the database, over the API wire, in every calculation. There are no floats anywhere. Rounding happens at exactly four named points (receipt value, issue value, tax per line, cost per packet), all half-up, and each is a small pure function with its own unit test. The ₹31.14 benchmark answer comes out of the same maths the application runs, not a spreadsheet worked backwards.
+
+### 3. The 3% boundary edge case is handled exactly right
+
+The spec says "flag variance beyond 3%." Pouches used = 194 vs planned 200: that's exactly −3.00%. A naive implementation flags it. This one doesn't — assumption A2 is "strictly greater than 3%", and the check compares the exact variance (not the rounded display value) against the tolerance. One test asserts the flag is `False` at the boundary. It's the kind of off-by-one that breaks audits in production.
+
+### 4. Offline orders can't duplicate, even after a network retry
+
+The salesman's PWA generates a `crypto.randomUUID()` per order, queues it in localStorage, and sends it as the `Idempotency-Key` header. The server stores the key alongside a hash of the request body. A retry with the same key returns the original response. A retry with a changed body returns 409. The `sales_order.client_uuid` column is also `UNIQUE`, so even if the idempotency table were missed, the database blocks the duplicate. This is the same pattern Stripe uses for payments.
+
+### 5. The cost per packet is computed, not entered
+
+Labour and gas/power are entered as overheads against a specific run. Material cost comes from actual issues at WAC, not from a standard cost sheet. ₹31.14 is the number the application computes — the benchmark test asserts it. If flour prices change next month, the next run's cost updates automatically without anyone touching a configuration file.
+
+### 6. Tamil / English in one click
+
+The language toggle (த / EN) in the navbar switches every label, button and message in the app. Preference is saved to localStorage. The font (Hind Madurai, bundled) supports Tamil script. For a snack factory in Tamil Nadu, the floor supervisor and the billing desk speak different languages — this closes that gap without a separate deployment.
+
+### 7. Tally-compatible export
+
+Indian businesses run Tally. The `/reports/tally-daybook` endpoint exports Sales, Purchase and Receipt vouchers in Tally's CSV import format with DD-MM-YYYY dates. An auditor or accountant can import a month's transactions into Tally in one step. This required understanding how Tally reads its own CSV — not a generic export, a shaped one.
+
+---
+
 ## Quick start
 
 ### Try the live site

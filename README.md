@@ -167,9 +167,9 @@ Valuation method: **moving weighted average cost** per item. Overheads charged p
 
 ---
 
-## Engineering decisions worth noting
+## Beyond requirements
 
-These aren't listed in any requirement tier — they're design choices that make the system behave correctly under pressure.
+These aren't listed in any requirement.
 
 ### The stock ledger is enforced by the database, not by application discipline
 

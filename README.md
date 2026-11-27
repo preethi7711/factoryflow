@@ -167,17 +167,13 @@ Valuation method: **moving weighted average cost** per item. Overheads charged p
 
 ---
 
-## Beyond what was asked
+## Engineering decisions worth noting
 
-The benchmark and all eight must-haves are the floor. These additions show how the system would behave in a real factory, ordered by how hard each one is to get right.
+These aren't listed in any requirement tier — they're design choices that make the system behave correctly under pressure.
 
 ### The stock ledger is enforced by the database, not by application discipline
 
 The append-only rule is a **PostgreSQL trigger** that raises an error if anyone — a bug, a direct `psql` session, a future developer — tries to `UPDATE`, `DELETE` or `TRUNCATE` `stock_movement`. Stock can never silently drift. A dedicated test (`test_ledger_and_audit_log_are_append_only`) proves the trigger fires. Most systems trust the application layer; this one proves the invariant at the storage layer.
-
-### Offline orders use the same pattern Stripe uses for payments
-
-The salesman's PWA creates `crypto.randomUUID()` per order, queues it in localStorage, and sends it as an `Idempotency-Key` header. A retry returns the original response. A changed body returns 409. The `sales_order.client_uuid` column is also `UNIQUE` as a second guard. No double orders, even when the network drops mid-submit on a factory floor.
 
 ### The 3% variance boundary is handled exactly right
 
@@ -185,19 +181,11 @@ The spec says "flag beyond 3%." Pouches used = 194 vs planned 200: exactly −3.
 
 ### Costing is derived from actual movements, not a fixed sheet
 
-Material cost = actual quantities issued at WAC. Labour and gas/power are entered against the specific run. ₹31.14 is the number the application computes from the ledger — the benchmark test asserts it. If flour prices change next month, the next run's cost updates automatically; nothing needs editing.
+Material cost = actual quantities issued at weighted average cost. Labour and gas/power are entered against the specific run. ₹31.14 is the number the application computes from the ledger — the benchmark test asserts it. If flour prices change next month, the next run's cost updates automatically; nothing needs editing.
 
 ### A full audit trail with before/after JSON on every edit
 
-Every edit to an invoice or production run writes an `audit_log` row in the **same database transaction** as the change itself — entity, action, before JSON, after JSON, user, timestamp. The log table is also append-only (same trigger). An auditor can replay exactly what changed and who changed it.
-
-### Tamil / English bilingual UI
-
-The language toggle (த / EN) in the navbar switches every label, button and message. Preference is saved per browser. The font (Hind Madurai, bundled) handles Tamil script. For a Tamil Nadu factory, the production floor and the billing desk may speak different languages — this serves both without a second deployment.
-
-### Tally-compatible export
-
-Indian businesses run Tally. `/reports/tally-daybook` exports Sales, Purchase and Receipt vouchers in Tally's own CSV import format with DD-MM-YYYY dates. An accountant can import a month's transactions in one step. This required understanding Tally's own schema — not a generic CSV, a shaped one.
+Every edit to an invoice or production run writes an `audit_log` row in the **same database transaction** as the change itself — entity, action, before JSON, after JSON, user, timestamp. The log is also append-only (same trigger). An auditor can replay exactly what changed and who changed it.
 
 ---
 

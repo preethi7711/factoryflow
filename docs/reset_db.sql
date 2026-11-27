@@ -1,51 +1,29 @@
 -- ============================================================
 -- FactoryFlow: Reset all data and re-seed from scratch
--- Run this in the Neon SQL Editor (or any Postgres client)
--- before recording your demo.
+-- Run this in the Neon SQL Editor before recording your demo.
+--
+-- Why DROP SCHEMA instead of TRUNCATE:
+--   The ledger tables (stock_movement, audit_log, payment_allocation
+--   etc.) have append-only DB triggers that block TRUNCATE.
+--   Dropping the schema removes the data AND the triggers in one go.
+--   The Render deploy that follows re-runs Alembic migrations,
+--   which recreates everything cleanly.
 --
 -- After running this SQL:
---   Live site (Render): redeploy the service once — it will
---     auto-seed because SEED_ON_START=1 is set.
---   Local Docker: run:
---     docker compose exec api python -m app.seed
+--   Go to Render dashboard → your service → Manual Deploy
+--   → "Deploy latest commit"
+--   The service will run migrations + seed automatically.
+--   Wait ~60 seconds, then open the live site to verify.
 -- ============================================================
 
--- Drop every table (CASCADE removes dependent rows automatically)
--- and reset all auto-increment sequences to 1.
+-- Drop every table and trigger, then recreate an empty schema.
+DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
 
-TRUNCATE TABLE
-    payment_allocation,
-    payment,
-    dispatch,
-    credit_note,
-    invoice_line,
-    invoice,
-    invoice_sequence,
-    order_line,
-    sales_order,
-    idempotency_key,
-    run_overhead,
-    run_consumption,
-    production_run,
-    purchase_line,
-    purchase,
-    stock_movement,
-    stock_lot,
-    stock_adjustment_line,
-    stock_adjustment,
-    audit_log,
-    bom_line,
-    bom,
-    item_unit,
-    item,
-    customer,
-    supplier,
-    company_settings,
-    app_user
-RESTART IDENTITY CASCADE;
+-- Restore default privileges so Postgres and your app user can use it.
+GRANT ALL ON SCHEMA public TO PUBLIC;
 
 -- ============================================================
--- Done. The database is now empty.
--- Trigger a Render redeploy (or run python -m app.seed locally)
--- to repopulate with fresh benchmark + demo data.
+-- Done. The schema is now completely empty.
+-- Trigger a Render Manual Deploy to run migrations + seed.
 -- ============================================================

@@ -20,11 +20,13 @@ Step 1: Go to https://neon.tech  → sign in → open your FactoryFlow project
 Step 2: Click "SQL Editor" in the left sidebar
 Step 3: Copy ALL the contents of the file  docs/reset_db.sql
         and paste it into the SQL editor, then click Run
+        (This drops and recreates the schema — takes about 2 seconds)
 Step 4: Go to https://dashboard.render.com → find your FactoryFlow service
 Step 5: Click "Manual Deploy" → "Deploy latest commit"
-        (this restarts the service, which re-seeds the database automatically)
+        (Render runs migrations + seed automatically on startup)
 Step 6: Wait about 60 seconds for the site to wake up, then verify:
         Open the site → log in as admin → Orders page should be empty
+        Product list should show Murukku, Mixture, Banana Chips
 
 --- ON LOCAL DOCKER ---
 

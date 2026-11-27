@@ -5,6 +5,15 @@ Each milestone adds a section. Commit hashes are in `git log`.
 
 ## [Unreleased]
 
+### Added (P11 stretch — Tamil/English bilingual UI switch)
+- Language toggle button (**த** / **EN**) added to the navbar, visible for every role.
+- Clicking toggles all key UI labels between English and Tamil at runtime; preference is saved to
+  `localStorage` and restored on reload.
+- `frontend/src/i18n.js`: ~80-key translation dictionary (`en` + `ta` objects).
+- `frontend/src/LanguageContext.jsx`: `LanguageProvider`, `useLanguage()`, `useT()` shorthand hook.
+- Translations wired into Layout, OrderPage, ProductionPage, AdminOrdersPage, StockPage.
+- Hind Madurai (already bundled via fontsource) supports Tamil script natively — no new fonts added.
+
 ### Added (P11 stretch — service-worker PWA shell)
 - `vite-plugin-pwa` generates a service worker that precaches the built shell (JS/CSS/fonts/SVGs
   — 39 entries, ~655 KiB) and a web app manifest, so the app opens offline and can be installed

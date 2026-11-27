@@ -1,6 +1,6 @@
 # Project status (session handoff file)
 
-_Last updated: 2026-11-27 (P11 closed: README, interview notes finalised)_
+_Last updated: 2026-11-27 (Tamil/English bilingual UI switch merged)_
 
 ## Current phase: **P11 done** — all stretch items shipped, benchmark green, project complete
 

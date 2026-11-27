@@ -39,3 +39,6 @@ Thumbs.db
 
 # Claude Code project instructions (internal)
 CLAUDE.md
+
+# Claude Code internal configuration
+.claude/

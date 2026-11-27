@@ -95,22 +95,25 @@ free Neon Postgres database, with no paid services anywhere. Design details: [de
 | Tier | Item | Status |
 |---|---|---|
 | Must | Login with roles (5 roles, deny by default, checked on every route) | ✅ |
-| Must | Product, customer, raw-material and BOM masters | ✅ via API + seed (no master-editing screens yet) |
+| Must | Product, customer, raw-material and BOM masters | ✅ via API + seed; admin edit screen at `/masters` |
 | Must | Mobile-friendly order entry and admin approval | ✅ |
 | Must | GST invoice as PDF (GSTIN, HSN, CGST/SGST or IGST, FY numbering) | ✅ |
 | Must | Production run updates raw and finished-goods stock automatically | ✅ |
 | Must | Planned vs actual consumption and yield, with variance | ✅ |
 | Must | Stock summary and stock ledger | ✅ |
 | Must | Sales register and stock report, CSV/Excel export | ✅ |
-| Should | Purchases and supplier records | ✅ purchases; suppliers via API + seed |
-| Should | Payments and outstanding | ✅ |
-| Should | Ageing | ❌ not yet |
+| Should | Purchases and supplier records | ✅ purchases (plus purchase register report) |
+| Should | Payments and outstanding | ✅ (receipt `Idempotency-Key` closes the double-post window) |
+| Should | Ageing | ✅ 0-30 / 31-60 / 61-90 / 91+ day buckets on `/reports/ageing` |
 | Should | Cost per packet with overheads | ✅ |
-| Should | GST summary report (GSTR-1 / 3B shape) | ❌ not yet |
-| Should | Variance alerts beyond a tolerance | ✅ flagged per run (no cross-run alert list yet) |
-| Should | Owner dashboard | ❌ owner sees stock and reports only |
+| Should | GST summary report (GSTR-1 / 3B shape) | ✅ `/reports/gst-summary` (B2B) and `/reports/hsn-summary` (HSN rate buckets) |
+| Should | Variance alerts beyond a tolerance | ✅ `/reports/variance-alerts` lists every flagged yield or material line |
+| Should | Owner dashboard | ✅ `/dashboard` with sales / collections / outstanding / FG value, ageing panel, variance banner |
 | Stretch | Offline order capture with sync | ✅ localStorage queue + idempotency keys |
 | Stretch | Batch and expiry tracking | ✅ every movement carries a lot (FIFO; FEFO not switched on) |
+| Stretch | Service-worker PWA shell | ✅ `vite-plugin-pwa`: app opens offline, installable on Android/iOS |
+| Stretch | Tally day book export | ✅ `/reports/tally-daybook` CSV (DD-MM-YYYY, Sales/Purchase/Receipt vouchers) |
+| Stretch | Master data edit / deactivate | ✅ PATCH endpoints + admin UI; deactivation hides from lists but leaves history intact |
 | Extra | Invoice cancellation by credit note, audit log, append-only documents | ✅ |
 
 ## Assumptions
@@ -134,13 +137,10 @@ The ones that shape the numbers:
 
 ## Known gaps
 
-- Ageing, the GST summary (GSTR-1/3B) and the owner dashboard aren't built (should-have tier).
-- Masters (items, customers, suppliers, BOMs) are created through the API and the seed. There are no editing screens.
-- The admin screen holds the raised invoice in the page while you dispatch and record payment, so a page reload before dispatch loses that link. The data is safe, but the screen can't find it again.
+- BOMs are still created through the API and the seed only — the admin UI edits items, customers and suppliers, not recipes.
 - Stock cover is checked at approval (with the exact shortage). It isn't previewed in the order list before you click.
-- A production run that is started but never completed leaves its materials issued, with no work-in-progress report and no run reversal yet.
-- Recording a payment has no idempotency key yet, so a retried request posts a second receipt. Allocation is capped at the invoice total, so money can't over-collect.
-- The offline queue covers orders only, and there is no service-worker app cache yet.
+- A production run that is started but never completed leaves its materials issued, with no work-in-progress report and no run reversal yet (invoice cancellation already has one, via `inventory.post_reversals()`).
+- The offline queue covers orders only, not payments. The service-worker shell keeps the app usable offline; new orders queue in localStorage.
 
 ## Repository map
 

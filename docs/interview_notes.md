@@ -468,3 +468,94 @@ posts an ISSUE movement of −10500 ml → `/variance` reads it back from the le
 ### Practice change (do it alone)
 Show the cost-per-packet **margin** on the production screen: (sale price − cost per packet), using
 `inr()`. Get the sale price from `GET /items` (already loaded for `kinds`), and don't compute money with floats.
+
+## P10: Should-haves (GST summary, payments register, ageing, dashboard)
+
+### What it is
+Four read-only report endpoints plus an owner dashboard — all built from tables the detailed reports
+already read, so nothing can drift. No new migration.
+
+### The 3 files that matter
+- `backend/app/reports/service.py`: `gst_summary`, `hsn_summary`, `payments_register`, `ageing`, `dashboard`
+  builders added; all return the same `{columns, rows, totals}` envelope.
+- `frontend/src/pages/StockPage.jsx`: tab bar (now 11 tabs) over a single `ReportTable` component — no
+  per-report UI code, the envelope drives the rendering.
+- `frontend/src/pages/DashboardPage.jsx`: four metric cards, FG on-hand list, ageing panel, variance banner.
+
+### One trace: ageing bucket for Retailer A's outstanding invoice
+`GET /reports/ageing?from=2026-11-01&to=2026-11-30` → `ageing()` queries non-cancelled invoices
+→ for each: `outstanding = total − SUM(allocations)` (same formula payments.service uses, one source
+of truth) → `age_days = (to_date − invoice_date)` → bucketed into 0-30/31-60/61-90/91+ →
+Retailer A lands in the 0–30 bucket at 6 days, outstanding ₹3,875.
+
+### Five likely questions
+1. **Why not store the outstanding balance?** A stored balance can drift from the allocations. Deriving it
+   with the same formula in every code path means the ageing, the payments register and the dashboard always
+   agree — no reconciliation needed.
+2. **What is GSTR-1 B2B vs GSTR-3B 3.1(a)?** B2B lists each invoice (per customer, per HSN). 3B 3.1(a) is
+   the aggregate: total taxable, CGST, SGST, IGST. The `/gst-summary` rows feed both: row-by-row for GSTR-1,
+   totals row for 3B.
+3. **How does the HSN summary know the UOM?** Each invoice line carries the product's base UOM from `item.base_uom`.
+   The HSN summary groups by `(hsn, uom, rate_bp)` — the GSTR-1 table 12 shape.
+4. **Can the ageing run for a past period?** Yes. The `age_days = (as-of date − invoice date)` is computed
+   against the query's `to` parameter, so a December run on a November range gives November's true ageing.
+5. **What does the variance banner on the dashboard tell the owner?** It surfaces the count of flagged
+   yield/material lines from `/reports/variance-alerts` — the owner sees there's a problem without reading
+   the production screen.
+
+### Practice change (do it alone)
+Add a **top-10 customers by sales** panel to the dashboard: query non-cancelled invoice lines grouped by
+`customer_id`, sum the taxable amount, return the top 10 with customer name. Add it to `DashboardPage`
+below the FG on-hand list.
+
+## P11: Stretch (purchase register, variance alerts, payments idempotency, masters edit/deactivate, Tally day book, masters UI, PWA shell)
+
+### What it is
+Seven independent improvements in one phase: five backend/API additions and two pure-frontend items.
+Nothing here changes the core ledger logic or the benchmark numbers.
+
+### The files that matter (one per sub-item)
+- **Purchase register** – `backend/app/reports/service.py:purchase_register`: one row per purchase in period;
+  totals match `purchase.total_paise`, which was computed at receipt so the register and the ledger agree.
+- **Variance alerts** – `backend/app/reports/service.py:variance_alerts`: re-runs `production.run_variance()`
+  on every completed run in period; can't drift from the per-run screen.
+- **Payments idempotency** – `backend/app/payments/service.py:_replay` and `backend/app/payments/router.py`:
+  same guard as orders — `idempotency_key` table, `IntegrityError` replay for the concurrent double-tap.
+- **Masters edit/deactivate** – `backend/app/masters/service.py:update_item/customer/supplier`; migration
+  `c932ce0a5ca4` adds `is_active BOOLEAN NOT NULL DEFAULT TRUE` to `item`, `customer`, `supplier`; list
+  endpoints gain `?include_inactive=true`; deactivation hides from lists but leaves history intact.
+- **Tally day book** – `backend/app/reports/service.py:tally_daybook`: Sales/Purchase/Receipt vouchers,
+  dates as DD-MM-YYYY, amounts in integer paise; ships as CSV/XLSX via the shared export pipeline.
+- **Masters admin UI** – `frontend/src/pages/MastersPage.jsx`: three tabs (Items/Customers/Suppliers),
+  inline edit form per row, Deactivate/Reactivate button, `?include_inactive=true` toggle.
+- **PWA shell** – `frontend/vite.config.js:VitePWA`: `registerType: autoUpdate`, Workbox precache of all
+  static assets, `/api` excluded from the service worker cache (`navigateFallbackDenylist`).
+
+### One trace: admin deactivates "CARTON20" and verifies it's hidden
+`PATCH /items/CARTON20 {"is_active": false}` → `update_item()` reads the current row, writes
+`before/after` to `audit_log`, sets `is_active = False` → `GET /items` returns no CARTON20 → `GET /items?include_inactive=true` returns it with `is_active: false` → historical movements on the
+ledger still reference the CARTON20 lot and show up in the stock ledger unchanged.
+
+### Five likely questions
+1. **Why require `Idempotency-Key` on `POST /payments`?** Without it, a network retry could post two
+   receipts for one real deposit. The allocation cap prevents the customer going negative, but an auditor
+   would see duplicate entries. The key makes the retry safe and the books clean.
+2. **Why is `is_active` added to `item`, `customer` and `supplier` but not the BOM or the ledger?** The
+   BOM and the ledger are historical records. Deactivating an item hides it from the salesman's price
+   list (no new orders) and from the admin's create flows — but the item's past movements, lots and invoices
+   remain queryable and correct.
+3. **Why does the Tally day book exclude cancelled sales?** Tally's voucher import creates accounting
+   entries. A cancelled invoice was reversed with a credit note — both are excluded, keeping the day book
+   net (same rule as the GST summary and HSN summary, so all three agree on turnover).
+4. **Why is `/api` excluded from the service worker cache?** A stale ledger balance is worse than an
+   honest "you're offline" banner. The service worker caches only the app shell (JS/CSS/fonts); every API
+   call goes to the server or fails cleanly.
+5. **What happens when a PWA update ships?** `registerType: "autoUpdate"` activates the new service worker
+   on the next page load — no "Update available" prompt. Render auto-deploys are small and frequent, so
+   the user is always at most one reload behind.
+
+### Practice change (do it alone)
+Add a **reorder alert** to the dashboard: for each RAW or PACKAGING item whose current on-hand balance
+(in its display unit) is below a configurable `reorder_point` on `item`, show a warning row. Add a
+`reorder_point_qty` column (nullable) to `item` via a new migration, expose it in `ItemUpdate`, and
+surface the alert in `DashboardPage`.

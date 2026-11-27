@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { api, apiBlob } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
+import { useT } from "../LanguageContext.jsx";
 import ItemArt from "../components/SnackArt.jsx";
 import { DISPLAY_UNIT, inr, localToday, showQty } from "../format.js";
 import { Banner, Button, Card, Field, input } from "../ui.jsx";
@@ -50,6 +51,7 @@ const TABS = [
 
 export default function StockPage() {
   const { auth } = useAuth();
+  const t = useT();
   const token = auth.token;
   const [[from, to], setRange] = useState(monthDefaults);
   const [tab, setTab] = useState("stock-summary");
@@ -85,7 +87,7 @@ export default function StockPage() {
   return (
     <>
       <div>
-        <h1 className="text-3xl font-extrabold">Stock &amp; reports</h1>
+        <h1 className="text-3xl font-extrabold">{t("stock_reports")}</h1>
         <p className="text-sm text-choc-500">
           Every figure is read from the stock ledger or the invoices for the period you pick.
           Read-only.
@@ -94,7 +96,7 @@ export default function StockPage() {
 
       <Card title="Period">
         <div className="flex flex-wrap items-end gap-3">
-          <Field label="From">
+          <Field label={t("from_date")}>
             <input
               className={input}
               type="date"
@@ -102,7 +104,7 @@ export default function StockPage() {
               onChange={(e) => setRange([e.target.value, to])}
             />
           </Field>
-          <Field label="To">
+          <Field label={t("to_date")}>
             <input
               className={input}
               type="date"
@@ -110,7 +112,7 @@ export default function StockPage() {
               onChange={(e) => setRange([from, e.target.value])}
             />
           </Field>
-          <Button onClick={load}>Refresh</Button>
+          <Button onClick={load}>{t("refresh")}</Button>
         </div>
       </Card>
 
@@ -135,7 +137,7 @@ export default function StockPage() {
 
       {report && <ReportTable report={report} />}
 
-      <Card title="Download">
+      <Card title={t("download")}>
         <div className="space-y-2 text-sm">
           {TABS.map(([name, label]) => (
             <div key={name} className="flex items-center justify-between">

@@ -12,7 +12,7 @@ Built for the **NIT Tiruchirappalli Centre for Digital Infrastructure** internsh
 | | |
 |---|---|
 | **Live demo** | https://factoryflow-icdx.onrender.com *(Free tier — first load after idle takes ~60 s)* |
-| **Demo video** | *(link to be added after recording)* |
+| **Demo video** | [Watch on Google Drive →](https://drive.google.com/file/d/1XtZ9FIaRKHpBNKSCqezYKPt-3aa2v7wD/view?usp=sharing) |
 | **Design note** | [docs/design_note.md](docs/design_note.md) |
 
 ---
